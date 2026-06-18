@@ -134,6 +134,44 @@ test('DELETE /api/accounts/:id removes the account', async () => {
   } finally { await close(); }
 });
 
+async function bootCfg(deps, cfgOverride = {}) {
+  const { server } = createServer({ config: { ...baseConfig, ...cfgOverride }, ...deps });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const { port } = server.address();
+  return { base: `http://127.0.0.1:${port}`, close: () => new Promise((r) => server.close(r)) };
+}
+
+test('usage is cached within TTL (repeated polls hit upstream once)', async () => {
+  let calls = 0;
+  const credstore = memStore([{ id: 'a', label: 'a@x', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }]);
+  const usage = { fetchUsage: async () => { calls++; return goodUsage; } };
+  const oauth = { refresh: async () => { throw new Error('no'); } };
+  const { base, close } = await bootCfg({ credstore, usage, oauth }, { cacheTtlMs: 60_000 });
+  try {
+    await fetch(base + '/api/usage');
+    await fetch(base + '/api/usage');
+    const body = await (await fetch(base + '/api/usage')).json();
+    assert.equal(calls, 1); // 3 polls, 1 upstream call
+    assert.ok(body.accounts[0].cachedAgeMs >= 0);
+    assert.equal(body.accounts[0].usage.session.pct, 50);
+  } finally { await close(); }
+});
+
+test('serves stale cached value when upstream 429s', async () => {
+  let calls = 0;
+  const credstore = memStore([{ id: 'a', label: 'a@x', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }]);
+  const usage = { fetchUsage: async () => { calls++; if (calls === 1) return goodUsage; const e = new Error('429'); e.status = 429; throw e; } };
+  const oauth = { refresh: async () => { throw new Error('no'); } };
+  const { base, close } = await bootCfg({ credstore, usage, oauth }, { cacheTtlMs: 0 }); // force refetch each poll
+  try {
+    await fetch(base + '/api/usage'); // success -> cached
+    const body = await (await fetch(base + '/api/usage')).json(); // 429 -> stale
+    assert.equal(body.accounts[0].stale, true);
+    assert.equal(body.accounts[0].usage.session.pct, 50);
+    assert.equal(body.accounts[0].error, undefined);
+  } finally { await close(); }
+});
+
 test('GET / serves the dashboard html', async () => {
   const { base, close } = await boot({ credstore: memStore(), usage: {}, oauth: {} });
   try {

@@ -64,6 +64,10 @@ export function loadConfig(env = process.env) {
     port,
     bindHost,
     pollIntervalMs: Number(env.CLAUDE_USAGE_POLL_MS || 30_000),
+    // Server-side cache: upstream usage endpoint is hit at most once per
+    // account per this window, regardless of how many browsers poll. Protects
+    // against the endpoint's own rate limit (429).
+    cacheTtlMs: Number(env.CLAUDE_USAGE_CACHE_MS || 60_000),
     // Severity thresholds (percent utilization) for the UI bars.
     warnPct: Number(env.CLAUDE_USAGE_WARN || 70),
     critPct: Number(env.CLAUDE_USAGE_CRIT || 90),

@@ -33,18 +33,33 @@ export async function ensureFresh(account, { oauth, credstore, now = Date.now(),
 }
 
 // Build the aggregate payload for one account, isolating all failures.
+// Uses an in-memory cache so the upstream endpoint is hit at most once per
+// account per cacheTtl, and serves the last-known value (stale) on errors.
 async function accountUsage(account, deps) {
-  const { oauth, credstore, usage, thresholds } = deps;
+  const { oauth, credstore, usage, thresholds, cache, cacheTtl = 60_000, now = Date.now() } = deps;
   const base = { id: account.id, label: account.label, tier: account.tier || null };
+  const cached = cache && cache.get(account.id);
+
+  // Serve a fresh cache hit without touching upstream.
+  if (cached && cached.usage && now - cached.fetchedAt < cacheTtl) {
+    return { ...base, usage: cached.usage, cachedAgeMs: now - cached.fetchedAt };
+  }
+
+  const storeOk = (u) => { if (cache) cache.set(account.id, { usage: u, fetchedAt: Date.now() }); return u; };
+  const serveStale = (extra) => cached && cached.usage
+    ? { ...base, usage: cached.usage, stale: true, staleAgeMs: Date.now() - cached.fetchedAt, ...extra }
+    : null;
+
   try {
     let acct;
     try {
       acct = await ensureFresh(account, { oauth, credstore });
     } catch (e) {
-      return { ...base, error: 'needs_relogin', message: String(e.message || e) };
+      return serveStale({ message: 'cached; token refresh failed' })
+        || { ...base, error: 'needs_relogin', message: String(e.message || e) };
     }
     try {
-      const u = await usage.fetchUsage(acct.accessToken, { thresholds });
+      const u = storeOk(await usage.fetchUsage(acct.accessToken, { thresholds }));
       return { ...base, usage: u };
     } catch (e) {
       // One retry after a forced refresh on 401.
@@ -53,16 +68,20 @@ async function accountUsage(account, deps) {
           const tokens = await oauth.refresh({ refreshToken: acct.refreshToken });
           const updated = { ...acct, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken || acct.refreshToken, expiresAt: tokens.expiresAt };
           await credstore.putAccount(updated);
-          const u = await usage.fetchUsage(updated.accessToken, { thresholds });
+          const u = storeOk(await usage.fetchUsage(updated.accessToken, { thresholds }));
           return { ...base, usage: u };
         } catch (e2) {
-          return { ...base, error: 'needs_relogin', message: String(e2.message || e2) };
+          return serveStale({ status: e2.status || 401, message: 'cached; re-auth failed' })
+            || { ...base, error: 'needs_relogin', message: String(e2.message || e2) };
         }
       }
-      return { ...base, error: 'fetch_failed', status: e.status || null, message: String(e.message || e) };
+      // 429 / 5xx / network: prefer last-known value over an error.
+      return serveStale({ status: e.status || null, message: `cached; upstream ${e.status || 'error'}` })
+        || { ...base, error: 'fetch_failed', status: e.status || null, message: String(e.message || e) };
     }
   } catch (e) {
-    return { ...base, error: 'unknown', message: String(e.message || e) };
+    return serveStale({ message: 'cached; unexpected error' })
+      || { ...base, error: 'unknown', message: String(e.message || e) };
   }
 }
 
@@ -96,6 +115,7 @@ export function createServer(deps = {}) {
   const oauth = deps.oauth || oauthLib;
   const usage = deps.usage || usageLib;
   const logins = deps.logins || new Map(); // loginId -> {verifier, state, label}
+  const usageCache = deps.usageCache || new Map(); // accountId -> {usage, fetchedAt}
   const thresholds = { warnPct: config.warnPct, critPct: config.critPct };
 
   const handler = async (req, res) => {
@@ -111,7 +131,7 @@ export function createServer(deps = {}) {
       if (req.method === 'GET' && path === '/api/usage') {
         const accounts = await credstore.listAccounts();
         const results = await Promise.all(
-          accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds })),
+          accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, cacheTtl: config.cacheTtlMs })),
         );
         return sendJson(res, 200, {
           generatedAt: new Date().toISOString(),

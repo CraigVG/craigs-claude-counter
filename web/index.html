@@ -173,8 +173,9 @@ function card(a){
     <div class="card-head">
       <span class="label">${esc(a.label||a.id)}</span>
       ${a.tier?`<span class="tier">${esc(a.tier)}</span>`:''}
+      ${a.stale?`<span class="stale" title="last-known data (${esc(a.message||'upstream unavailable')})">cached</span>`:''}
       <span class="spacer"></span>
-      <button class="iconbtn" data-del="${esc(a.id)}">remove</button>
+      <button class="iconbtn" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}">remove</button>
     </div>
     ${bar(session)}
     ${bar(weekly)}
