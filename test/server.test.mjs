@@ -172,6 +172,22 @@ test('serves stale cached value when upstream 429s', async () => {
   } finally { await close(); }
 });
 
+test('circuit breaker stops calling upstream during a 429 cooldown', async () => {
+  let calls = 0;
+  const credstore = memStore([{ id: 'a', label: 'a@x', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }]);
+  const usage = { fetchUsage: async () => { calls++; if (calls === 1) return goodUsage; const e = new Error('429'); e.status = 429; throw e; } };
+  const oauth = { refresh: async () => { throw new Error('no'); } };
+  const { base, close } = await bootCfg({ credstore, usage, oauth }, { cacheTtlMs: 0, rateLimitCooldownMs: 60_000 });
+  try {
+    await fetch(base + '/api/usage'); // success -> cache
+    await fetch(base + '/api/usage'); // 429 -> trips cooldown
+    const body = await (await fetch(base + '/api/usage')).json(); // cooldown -> NO upstream call
+    assert.equal(calls, 2);
+    assert.equal(body.accounts[0].stale, true);
+    assert.match(body.accounts[0].message, /rate-limited/);
+  } finally { await close(); }
+});
+
 test('GET / serves the dashboard html', async () => {
   const { base, close } = await boot({ credstore: memStore(), usage: {}, oauth: {} });
   try {

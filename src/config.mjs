@@ -68,6 +68,10 @@ export function loadConfig(env = process.env) {
     // account per this window, regardless of how many browsers poll. Protects
     // against the endpoint's own rate limit (429).
     cacheTtlMs: Number(env.CLAUDE_USAGE_CACHE_MS || 60_000),
+    // Circuit breaker: after a 429 from upstream, stop calling it for this
+    // account for this long (serving last-known data). Prevents an open tab
+    // from sustaining the rate limit with a flood of failed retries.
+    rateLimitCooldownMs: Number(env.CLAUDE_USAGE_COOLDOWN_MS || 120_000),
     // Severity thresholds (percent utilization) for the UI bars.
     warnPct: Number(env.CLAUDE_USAGE_WARN || 70),
     critPct: Number(env.CLAUDE_USAGE_CRIT || 90),

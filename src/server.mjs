@@ -36,9 +36,21 @@ export async function ensureFresh(account, { oauth, credstore, now = Date.now(),
 // Uses an in-memory cache so the upstream endpoint is hit at most once per
 // account per cacheTtl, and serves the last-known value (stale) on errors.
 async function accountUsage(account, deps) {
-  const { oauth, credstore, usage, thresholds, cache, cacheTtl = 60_000, now = Date.now() } = deps;
+  const { oauth, credstore, usage, thresholds, cache, cacheTtl = 60_000, cooldownMs = 120_000, now = Date.now() } = deps;
   const base = { id: account.id, label: account.label, tier: account.tier || null };
   const cached = cache && cache.get(account.id);
+
+  const serveStale = (extra) => cached && cached.usage
+    ? { ...base, usage: cached.usage, stale: true, staleAgeMs: Date.now() - cached.fetchedAt, ...extra }
+    : null;
+
+  // Circuit breaker: if upstream recently 429'd this account, don't call it
+  // again until the cooldown passes — serve last-known data instead.
+  if (cached && cached.cooldownUntil && now < cached.cooldownUntil) {
+    const secs = Math.ceil((cached.cooldownUntil - now) / 1000);
+    return serveStale({ status: 429, message: `rate-limited; retrying in ~${secs}s` })
+      || { ...base, error: 'rate_limited', message: `rate-limited; retrying in ~${secs}s` };
+  }
 
   // Serve a fresh cache hit without touching upstream.
   if (cached && cached.usage && now - cached.fetchedAt < cacheTtl) {
@@ -46,9 +58,7 @@ async function accountUsage(account, deps) {
   }
 
   const storeOk = (u) => { if (cache) cache.set(account.id, { usage: u, fetchedAt: Date.now() }); return u; };
-  const serveStale = (extra) => cached && cached.usage
-    ? { ...base, usage: cached.usage, stale: true, staleAgeMs: Date.now() - cached.fetchedAt, ...extra }
-    : null;
+  const tripCooldown = () => { if (cache) cache.set(account.id, { ...(cache.get(account.id) || {}), cooldownUntil: Date.now() + cooldownMs }); };
 
   try {
     let acct;
@@ -76,8 +86,9 @@ async function accountUsage(account, deps) {
         }
       }
       // 429 / 5xx / network: prefer last-known value over an error.
+      if (e.status === 429) tripCooldown();
       return serveStale({ status: e.status || null, message: `cached; upstream ${e.status || 'error'}` })
-        || { ...base, error: 'fetch_failed', status: e.status || null, message: String(e.message || e) };
+        || { ...base, error: e.status === 429 ? 'rate_limited' : 'fetch_failed', status: e.status || null, message: String(e.message || e) };
     }
   } catch (e) {
     return serveStale({ message: 'cached; unexpected error' })
@@ -131,7 +142,7 @@ export function createServer(deps = {}) {
       if (req.method === 'GET' && path === '/api/usage') {
         const accounts = await credstore.listAccounts();
         const results = await Promise.all(
-          accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, cacheTtl: config.cacheTtlMs })),
+          accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
         );
         return sendJson(res, 200, {
           generatedAt: new Date().toISOString(),
