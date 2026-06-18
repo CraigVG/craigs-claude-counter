@@ -98,7 +98,7 @@ export function createServer(deps = {}) {
   const logins = deps.logins || new Map(); // loginId -> {verifier, state, label}
   const thresholds = { warnPct: config.warnPct, critPct: config.critPct };
 
-  const server = http.createServer(async (req, res) => {
+  const handler = async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname;
     try {
@@ -183,20 +183,23 @@ export function createServer(deps = {}) {
     } catch (e) {
       sendJson(res, 500, { error: 'server_error', message: String(e.message || e) });
     }
-  });
+  };
 
-  return { server, config, credstore, logins };
+  const server = http.createServer(handler);
+  return { server, handler, config, credstore, logins };
 }
 
 // Entry point when run directly.
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-  const { server, config } = createServer();
+  const { server, handler, config } = createServer();
   server.listen(config.port, config.bindHost, () => {
-    const host = config.bindHost;
-    console.log(`Claude Usage Dashboard listening on http://${host}:${config.port}`);
-    if (host !== '127.0.0.1') {
-      console.log(`Reachable across your tailnet at the URL above. Local: http://127.0.0.1:${config.port}`);
-    }
+    console.log(`Claude Usage Dashboard listening on http://${config.bindHost}:${config.port}`);
   });
+  // Also serve on loopback so localhost + the CLI work, without exposing the LAN.
+  if (config.bindHost !== '127.0.0.1') {
+    http.createServer(handler).listen(config.port, '127.0.0.1', () => {
+      console.log(`Also on http://127.0.0.1:${config.port} (local)`);
+    });
+  }
 }

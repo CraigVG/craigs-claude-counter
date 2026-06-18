@@ -71,6 +71,19 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   a { color: var(--accent); }
   .stale { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: 1px 6px; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; max-width: 540px; width: 100%; }
+  .modal-head { display: flex; align-items: center; margin-bottom: 12px; font-weight: 650; }
+  .modal-head .iconbtn { margin-left: auto; }
+  .modal label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 5px; }
+  .modal input, .modal textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 9px 11px; font: inherit; }
+  .modal textarea { min-height: 70px; resize: vertical; }
+  .modal p { color: var(--muted); font-size: 13px; margin: 6px 0; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+  .modal .step { display: none; }
+  .modal .msg { font-size: 13px; margin-top: 10px; min-height: 1em; }
+  .modal .msg.err { color: var(--crit); } .modal .msg.ok { color: var(--ok); }
+  .modal a.authlink { word-break: break-all; color: var(--accent); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -86,6 +99,13 @@
     <div id="grid" class="grid"></div>
     <div id="empty" class="empty" style="display:none">
       No accounts yet. Click <b>+ Add account</b> and log into each Claude Code account once.
+    </div>
+  </div>
+
+  <div id="modal" class="modal-backdrop" style="display:none">
+    <div class="modal">
+      <div class="modal-head"><span id="modal-title">Add account</span><button id="modal-x" class="iconbtn">✕</button></div>
+      <div id="modal-body"></div>
     </div>
   </div>
 
@@ -132,7 +152,7 @@ function card(a){
         <span class="label">${esc(a.label||a.id)}</span>
         ${a.tier?`<span class="tier">${esc(a.tier)}</span>`:''}
         <span class="spacer"></span>
-        <button class="iconbtn" data-del="${esc(a.id)}">remove</button>
+        <button class="iconbtn" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}">remove</button>
       </div>
       <div class="err ${bad?'bad':''}">${bad?'Needs re-login':'Temporarily unavailable'} — ${esc(a.message||a.error)}</div>
       ${bad?`<button data-relogin="1">Re-login</button>`:''}
@@ -195,7 +215,7 @@ function render(){
   renderSummary(accounts);
   $('#updated').textContent = 'updated ' + new Date(latest.generatedAt).toLocaleTimeString();
   // wire per-card buttons
-  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del));
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del, b.dataset.label));
   document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = addAccount);
 }
 
@@ -214,29 +234,81 @@ async function load(){
   }catch(e){ $('#updated').textContent = 'offline — retrying…'; }
 }
 
-async function addAccount(){
-  const label = prompt('Optional label for this account (leave blank to use its email):','') ?? '';
-  let start;
-  try{
-    const r = await fetch('/api/login/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
-    start = await r.json();
-  }catch(e){ alert('Could not start login: '+e); return; }
-  window.open(start.authorizeUrl,'_blank','noopener');
-  const pasted = prompt('A new tab opened. Log into the account, approve, then copy the code shown and paste it here:','');
-  if(!pasted) return;
-  try{
-    const r = await fetch('/api/login/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginId:start.loginId, pastedCode:pasted})});
-    const out = await r.json();
-    if(out.error){ alert('Login failed: '+(out.message||out.error)); return; }
-    await load();
-  }catch(e){ alert('Login failed: '+e); }
+// ---- modal-driven account management ----
+const modal = $('#modal'), modalBody = $('#modal-body'), modalTitle = $('#modal-title');
+let pendingLoginId = null;
+$('#modal-x').onclick = closeModal;
+modal.onclick = (e) => { if(e.target === modal) closeModal(); };
+function openModal(title, html){ modalTitle.textContent = title; modalBody.innerHTML = html; modal.style.display = 'flex'; }
+function closeModal(){ modal.style.display = 'none'; modalBody.innerHTML = ''; pendingLoginId = null; }
+
+function addAccount(){
+  pendingLoginId = null;
+  openModal('Add account', `
+    <div class="step" data-step="1" style="display:block">
+      <label for="m-label">Optional label (blank = use the account's email)</label>
+      <input id="m-label" placeholder="e.g. work / personal / client X" />
+      <div class="actions"><button id="m-getlink" class="primary">Open Claude login</button></div>
+      <div class="msg" id="m-msg1"></div>
+    </div>
+    <div class="step" data-step="2">
+      <p>A login tab opened. Log into the account you want to track, approve, then copy the code Claude shows and paste it below. To add a <b>different</b> account, switch accounts on claude.ai (or use a private window) first.</p>
+      <div id="m-linkwrap"></div>
+      <label for="m-code">Paste the code</label>
+      <textarea id="m-code" placeholder="paste the code from Claude here"></textarea>
+      <div class="actions"><button id="m-finish" class="primary">Finish</button><span class="meta">or <a id="m-back" href="#">start over</a></span></div>
+      <div class="msg" id="m-msg2"></div>
+    </div>
+  `);
 }
 
-async function removeAccount(id){
-  if(!confirm('Remove this account from the dashboard? (does not affect the Claude subscription)')) return;
-  await fetch('/api/accounts/'+encodeURIComponent(id),{method:'DELETE'});
-  await load();
+function removeAccount(id, label){
+  openModal('Remove account', `
+    <p>Remove <b>${esc(label||id)}</b> from the dashboard? This only forgets the token here; it does not affect the Claude subscription.</p>
+    <div class="actions"><button id="m-del" class="primary" data-id="${esc(id)}">Remove</button><button id="m-cancel">Cancel</button></div>
+    <div class="msg" id="m-msg3"></div>
+  `);
 }
+
+// Single delegated handler for all modal buttons (survives innerHTML swaps).
+modalBody.addEventListener('click', async (ev) => {
+  const t = ev.target;
+  if(t.id === 'm-getlink'){
+    const label = $('#m-label').value || '';
+    $('#m-msg1').className = 'msg'; $('#m-msg1').textContent = 'Starting...';
+    try{
+      const r = await fetch('/api/login/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+      const s = await r.json();
+      pendingLoginId = s.loginId;
+      $('#m-linkwrap').innerHTML = `<p>If no tab opened: <a class="authlink" href="${s.authorizeUrl}" target="_blank" rel="noopener">open the login link</a></p>`;
+      window.open(s.authorizeUrl,'_blank','noopener');
+      modalBody.querySelector('[data-step="1"]').style.display = 'none';
+      modalBody.querySelector('[data-step="2"]').style.display = 'block';
+    }catch(e){ $('#m-msg1').className = 'msg err'; $('#m-msg1').textContent = 'Could not start: '+e; }
+  }
+  else if(t.id === 'm-back'){
+    ev.preventDefault();
+    modalBody.querySelector('[data-step="1"]').style.display = 'block';
+    modalBody.querySelector('[data-step="2"]').style.display = 'none';
+  }
+  else if(t.id === 'm-finish'){
+    const code = $('#m-code').value.trim();
+    if(!code){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Paste the code first.'; return; }
+    $('#m-msg2').className = 'msg'; $('#m-msg2').textContent = 'Exchanging...';
+    try{
+      const r = await fetch('/api/login/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginId: pendingLoginId, pastedCode: code})});
+      const out = await r.json();
+      if(out.error){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Failed: '+(out.message||out.error); return; }
+      $('#m-msg2').className = 'msg ok'; $('#m-msg2').textContent = 'Added '+(out.label||'account');
+      await load(); setTimeout(closeModal, 800);
+    }catch(e){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Failed: '+e; }
+  }
+  else if(t.id === 'm-del'){
+    try{ await fetch('/api/accounts/'+encodeURIComponent(t.dataset.id),{method:'DELETE'}); closeModal(); await load(); }
+    catch(e){ $('#m-msg3').className = 'msg err'; $('#m-msg3').textContent = 'Failed: '+e; }
+  }
+  else if(t.id === 'm-cancel'){ closeModal(); }
+});
 
 $('#refresh').onclick = load;
 $('#add').onclick = addAccount;

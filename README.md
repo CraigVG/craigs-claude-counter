@@ -31,8 +31,22 @@ cd ~/claude-usage-dashboard
 npm start
 ```
 
-It prints a URL like `http://100.x.y.z:4319` (your tailnet IP) and is also at
-`http://127.0.0.1:4319` locally. Open it.
+It binds to **two** addresses: your Tailscale IP (so other tailnet devices can
+reach it) and `127.0.0.1` (local + the CLI). It deliberately does **not** bind to
+your LAN. It prints both URLs on start, e.g.:
+
+```
+Claude Usage Dashboard listening on http://100.126.121.49:4319
+Also on http://127.0.0.1:4319 (local)
+```
+
+From other computers/phones on your tailnet, use the MagicDNS name + port:
+
+```
+http://<your-mac-magicdns-name>:4319      e.g. http://craigs-macbook-pro-6.tailfd98e1.ts.net:4319
+```
+
+(`tailscale status` shows your device's MagicDNS name.)
 
 ### Add your accounts (one-time each)
 
@@ -63,14 +77,18 @@ Stop it: `launchctl unload ~/Library/LaunchAgents/com.craigvg.claude-usage-dashb
 node bin/claude-usage        # prints a compact per-account table
 ```
 
-## Cross-device over Tailscale (optional, HTTPS)
+## Cross-device over Tailscale
 
-By default the server binds to your Tailscale IP, so `http://<mac-tailnet-ip>:4319`
-works from your iPhone/iPad on the tailnet. For HTTPS + a stable hostname:
+Already works out of the box: the server binds to your Tailscale IP, so
+`http://<mac-magicdns-name>:4319` works from your iPhone/iPad/other Macs on the
+tailnet (see the URL it prints on start).
+
+Optional HTTPS + portless URL via `tailscale serve` (note: needs matching
+tailscale client/daemon versions; skip if `tailscale serve status` misbehaves):
 
 ```bash
 tailscale serve --bg 4319
-# then browse to https://<your-mac>.<tailnet>.ts.net
+# then browse to https://<your-mac-magicdns-name>/
 ```
 
 ## Configuration

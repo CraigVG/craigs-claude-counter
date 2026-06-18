@@ -7,8 +7,8 @@
 
   <key>ProgramArguments</key>
   <array>
-    <!-- Edit the two absolute paths below to match your machine. -->
-    <string>/usr/local/bin/node</string>
+    <!-- Edit the two absolute paths below to match your machine (which node). -->
+    <string>/opt/homebrew/bin/node</string>
     <string>/Users/craigvandergalien/claude-usage-dashboard/src/server.mjs</string>
   </array>
 
