@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.craigvg.claude-usage-dashboard</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Edit the two absolute paths below to match your machine. -->
+    <string>/usr/local/bin/node</string>
+    <string>/Users/craigvandergalien/claude-usage-dashboard/src/server.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/craigvandergalien/claude-usage-dashboard</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/craigvandergalien/claude-usage-dashboard/logs/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/craigvandergalien/claude-usage-dashboard/logs/server.err.log</string>
+</dict>
+</plist>

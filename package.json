@@ -1,0 +1,13 @@
+{
+  "name": "claude-usage-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tailnet-private dashboard for Claude Code session + weekly limits across multiple accounts",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {}
+}

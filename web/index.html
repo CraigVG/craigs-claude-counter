@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Claude Code Usage</title>
+<style>
+  :root {
+    --bg: #0d0f14; --panel: #161a22; --panel2: #1d2230; --line: #283041;
+    --text: #e7ebf2; --muted: #8b95a8; --accent: #c4724a;
+    --ok: #36c98e; --warn: #e8b13a; --crit: #ef5d63; --unknown: #5a6478;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 18px 22px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: rgba(13,15,20,.92); backdrop-filter: blur(8px); z-index: 5;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header .spacer { flex: 1; }
+  .meta { color: var(--muted); font-size: 13px; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1207; font-weight: 600; }
+  .wrap { padding: 22px; max-width: 1200px; margin: 0 auto; }
+  .summary {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; margin-bottom: 18px; display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
+  }
+  .summary .big { font-size: 22px; font-weight: 700; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
+  }
+  .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .card-head .label { font-weight: 650; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tier {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2);
+    border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  }
+  .card-head .spacer { flex: 1; }
+  .iconbtn { padding: 3px 8px; font-size: 12px; color: var(--muted); }
+  .metric { margin: 12px 0; }
+  .metric .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+  .metric .name { font-size: 13px; color: var(--muted); }
+  .metric .pct { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 14px; }
+  .metric .reset { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .bar { height: 9px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 999px; transition: width .4s ease; }
+  .sub { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  .sub .chip { font-size: 12px; color: var(--muted); }
+  .sub .chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .overage { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); font-size: 13px; color: var(--muted); }
+  .overage b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .s-normal { background: var(--ok); } .c-normal { color: var(--ok); }
+  .s-warning { background: var(--warn); } .c-warning { color: var(--warn); }
+  .s-critical { background: var(--crit); } .c-critical { color: var(--crit); }
+  .s-unknown { background: var(--unknown); } .c-unknown { color: var(--unknown); }
+  .err { color: var(--warn); font-size: 13px; padding: 10px 0; }
+  .err.bad { color: var(--crit); }
+  .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  a { color: var(--accent); }
+  .stale { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: 1px 6px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Claude&nbsp;Code Usage</h1>
+    <span id="updated" class="meta"></span>
+    <span class="spacer"></span>
+    <button id="refresh">Refresh</button>
+    <button id="add" class="primary">+ Add account</button>
+  </header>
+  <div class="wrap">
+    <div id="summary" class="summary" style="display:none"></div>
+    <div id="grid" class="grid"></div>
+    <div id="empty" class="empty" style="display:none">
+      No accounts yet. Click <b>+ Add account</b> and log into each Claude Code account once.
+    </div>
+  </div>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+let latest = null;
+
+function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function fmtCountdown(iso){
+  if(!iso) return '';
+  const ms = new Date(iso).getTime() - Date.now();
+  if(isNaN(ms)) return '';
+  if(ms <= 0) return 'resetting…';
+  const s = Math.floor(ms/1000);
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if(d>0) return `resets in ${d}d ${h}h`;
+  if(h>0) return `resets in ${h}h ${m}m`;
+  return `resets in ${m}m`;
+}
+
+function bar(w){
+  if(!w) return '';
+  const pct = Math.max(0, Math.min(100, w.pct ?? 0));
+  const sev = w.severity || 'unknown';
+  return `
+    <div class="metric">
+      <div class="row">
+        <span class="name">${esc(w.name)}</span>
+        <span class="pct c-${sev}">${w.pct==null?'—':w.pct+'%'}</span>
+      </div>
+      <div class="bar"><span class="s-${sev}" style="width:${pct}%"></span></div>
+      <div class="row" style="margin-top:4px;margin-bottom:0">
+        <span class="reset" data-reset="${esc(w.resetsAt||'')}">${esc(fmtCountdown(w.resetsAt))}</span>
+      </div>
+    </div>`;
+}
+
+function card(a){
+  if(a.error){
+    const bad = a.error === 'needs_relogin';
+    return `<div class="card">
+      <div class="card-head">
+        <span class="label">${esc(a.label||a.id)}</span>
+        ${a.tier?`<span class="tier">${esc(a.tier)}</span>`:''}
+        <span class="spacer"></span>
+        <button class="iconbtn" data-del="${esc(a.id)}">remove</button>
+      </div>
+      <div class="err ${bad?'bad':''}">${bad?'Needs re-login':'Temporarily unavailable'} — ${esc(a.message||a.error)}</div>
+      ${bad?`<button data-relogin="1">Re-login</button>`:''}
+    </div>`;
+  }
+  const u = a.usage || {};
+  const session = u.session && {...u.session, name:'Session (5h)'};
+  const weekly  = u.weekly  && {...u.weekly,  name:'Weekly (all)'};
+  const subs = [];
+  if(u.weeklyOpus)   subs.push(`<span class="chip">Opus wk <b class="c-${u.weeklyOpus.severity}">${u.weeklyOpus.pct}%</b></span>`);
+  if(u.weeklySonnet) subs.push(`<span class="chip">Sonnet wk <b class="c-${u.weeklySonnet.severity}">${u.weeklySonnet.pct}%</b></span>`);
+  let over = '';
+  if(u.overage && u.overage.enabled){
+    const o = u.overage;
+    over = `<div class="overage">Overage: <b>$${o.usedUsd.toFixed(2)}</b> of $${o.limitUsd.toFixed(2)} <span class="c-${severityForPct(o.pct)}">(${o.pct}%)</span></div>`;
+  }
+  return `<div class="card">
+    <div class="card-head">
+      <span class="label">${esc(a.label||a.id)}</span>
+      ${a.tier?`<span class="tier">${esc(a.tier)}</span>`:''}
+      <span class="spacer"></span>
+      <button class="iconbtn" data-del="${esc(a.id)}">remove</button>
+    </div>
+    ${bar(session)}
+    ${bar(weekly)}
+    ${subs.length?`<div class="sub">${subs.join('')}</div>`:''}
+    ${over}
+  </div>`;
+}
+
+function severityForPct(p){ if(p==null) return 'unknown'; if(p>=90) return 'critical'; if(p>=70) return 'warning'; return 'normal'; }
+
+function renderSummary(accounts){
+  const live = accounts.filter(a=>a.usage);
+  const el = $('#summary');
+  if(!live.length){ el.style.display='none'; return; }
+  let worst = null;
+  for(const a of live){
+    for(const key of ['session','weekly']){
+      const w = a.usage[key];
+      if(w && (worst==null || (w.pct??0) > worst.pct)){
+        worst = { pct: w.pct??0, label: a.label, kind: key==='session'?'session':'weekly', sev: w.severity, resetsAt: w.resetsAt };
+      }
+    }
+  }
+  el.style.display='flex';
+  el.innerHTML = `
+    <div><div class="meta">Accounts</div><div class="big">${live.length}${accounts.length>live.length?` <span class="meta">/ ${accounts.length}</span>`:''}</div></div>
+    <div><div class="meta">Most constrained</div>
+      <div class="big c-${worst.sev}">${worst.pct}% <span style="font-size:14px;font-weight:500" class="meta">${esc(worst.label)} · ${worst.kind}</span></div>
+      <div class="reset meta" data-reset="${esc(worst.resetsAt||'')}">${esc(fmtCountdown(worst.resetsAt))}</div>
+    </div>`;
+}
+
+function render(){
+  if(!latest) return;
+  const accounts = latest.accounts || [];
+  $('#grid').innerHTML = accounts.map(card).join('');
+  $('#empty').style.display = accounts.length ? 'none' : 'block';
+  renderSummary(accounts);
+  $('#updated').textContent = 'updated ' + new Date(latest.generatedAt).toLocaleTimeString();
+  // wire per-card buttons
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del));
+  document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = addAccount);
+}
+
+function tickCountdowns(){
+  document.querySelectorAll('[data-reset]').forEach(el=>{
+    const iso = el.getAttribute('data-reset');
+    if(iso) el.textContent = fmtCountdown(iso);
+  });
+}
+
+async function load(){
+  try{
+    const r = await fetch('/api/usage');
+    latest = await r.json();
+    render();
+  }catch(e){ $('#updated').textContent = 'offline — retrying…'; }
+}
+
+async function addAccount(){
+  const label = prompt('Optional label for this account (leave blank to use its email):','') ?? '';
+  let start;
+  try{
+    const r = await fetch('/api/login/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    start = await r.json();
+  }catch(e){ alert('Could not start login: '+e); return; }
+  window.open(start.authorizeUrl,'_blank','noopener');
+  const pasted = prompt('A new tab opened. Log into the account, approve, then copy the code shown and paste it here:','');
+  if(!pasted) return;
+  try{
+    const r = await fetch('/api/login/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginId:start.loginId, pastedCode:pasted})});
+    const out = await r.json();
+    if(out.error){ alert('Login failed: '+(out.message||out.error)); return; }
+    await load();
+  }catch(e){ alert('Login failed: '+e); }
+}
+
+async function removeAccount(id){
+  if(!confirm('Remove this account from the dashboard? (does not affect the Claude subscription)')) return;
+  await fetch('/api/accounts/'+encodeURIComponent(id),{method:'DELETE'});
+  await load();
+}
+
+$('#refresh').onclick = load;
+$('#add').onclick = addAccount;
+load();
+setInterval(load, 30000);
+setInterval(tickCountdowns, 1000);
+</script>
+</body>
+</html>

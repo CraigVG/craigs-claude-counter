@@ -1,0 +1,41 @@
+#!/usr/bin/env node
+// Quick CLI glance: print a one-line-per-account usage table from the running
+// dashboard server (no auth, localhost only). Falls back with a clear message.
+const port = process.env.CLAUDE_USAGE_PORT || 4319;
+const host = process.env.CLAUDE_USAGE_BIND || '127.0.0.1';
+const url = `http://${host}:${port}/api/usage`;
+
+function bar(pct) {
+  if (pct == null) return '—'.padEnd(10);
+  const n = Math.round((pct / 100) * 10);
+  return ('█'.repeat(n) + '░'.repeat(10 - n));
+}
+function reset(iso) {
+  if (!iso) return '';
+  const ms = new Date(iso) - Date.now();
+  if (ms <= 0) return 'now';
+  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d > 0 ? `${d}d${h}h` : h > 0 ? `${h}h${m}m` : `${m}m`;
+}
+
+try {
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!data.accounts?.length) { console.log('No accounts yet. Open the dashboard and add one.'); process.exit(0); }
+  console.log(`Claude Code usage  (${new Date(data.generatedAt).toLocaleTimeString()})\n`);
+  for (const a of data.accounts) {
+    const label = (a.label || a.id).padEnd(26).slice(0, 26);
+    if (a.error) { console.log(`${label}  ${a.error === 'needs_relogin' ? 'NEEDS RE-LOGIN' : 'unavailable: ' + (a.message || a.error)}`); continue; }
+    const s = a.usage.session, w = a.usage.weekly;
+    const tier = (a.tier || '').padEnd(8);
+    console.log(`${label}  ${tier}`);
+    if (s) console.log(`   session  ${bar(s.pct)} ${String(s.pct ?? '—').padStart(3)}%  resets ${reset(s.resetsAt)}`);
+    if (w) console.log(`   weekly   ${bar(w.pct)} ${String(w.pct ?? '—').padStart(3)}%  resets ${reset(w.resetsAt)}`);
+    if (a.usage.overage?.enabled) console.log(`   overage  $${a.usage.overage.usedUsd.toFixed(2)} / $${a.usage.overage.limitUsd.toFixed(2)} (${a.usage.overage.pct}%)`);
+    console.log('');
+  }
+} catch (e) {
+  console.error(`Could not reach the dashboard at ${url}`);
+  console.error('Is the server running?  cd ~/claude-usage-dashboard && npm start');
+  process.exit(1);
+}
