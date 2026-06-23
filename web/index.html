@@ -167,6 +167,43 @@
   button.primary:hover { filter: brightness(1.08); }
   button.ghost { font-family: var(--ui); background: transparent; border: 1px solid var(--hair); color: var(--ink-2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
   button.ghost:hover { border-color: #2c333d; color: var(--ink); }
+
+  /* cell labels — hidden in the table, shown when the board reflows to cards */
+  .clabel { display: none; }
+
+  /* Responsive: below 760px, reflow the table into stacked per-account cards */
+  @media (max-width: 760px) {
+    body { padding: 22px 14px 44px; overflow-x: hidden; display: block; }
+    .app { min-width: 0; width: calc(100vw - 28px); max-width: calc(100vw - 28px); }
+    .summary .line { overflow-wrap: anywhere; white-space: normal; }
+    .acct .email { white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+    .topbar { flex-wrap: wrap; gap: 12px; }
+    .brand h1 { font-size: 16px; }
+    .acct-count { display: none; }
+    .controls { flex-wrap: wrap; justify-content: flex-start; }
+    .summary { display: block !important; }
+    .summary .sig { display: inline-block; margin-bottom: 9px; }
+    .summary .line { display: block; }
+    .summary .spacer { display: none; }
+    .summary .total { display: block; margin-top: 9px; white-space: normal; }
+    .board, .board-scroll { background: transparent; border: none; border-radius: 0; overflow: visible; }
+    .grid.head { display: none !important; }
+    .grid { display: flex !important; flex-direction: column; align-items: stretch; gap: 13px; min-width: 0 !important; }
+    .grid.row { background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; }
+    .grid.row:hover { background: var(--panel); }
+    .grid.row.alarm { background: var(--alarm-bg); border-color: var(--alarm-edge); }
+    .grid.row.relogin { border-color: var(--alarm-edge); }
+    .grid.row > div { padding: 0 !important; }
+    .row .tick { display: none; }
+    .clabel { display: block; font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 7px; }
+    .meter, .ometer { max-width: none; }
+    .metric .reset { display: block; margin-top: 6px; }
+    .acct .email { white-space: normal; }
+    .actions-cell { justify-content: flex-start; }
+    .rowbtn.del { opacity: 1; border-color: var(--hair); }
+    .models { flex-direction: row; gap: 18px; flex-wrap: wrap; }
+    .foot { gap: 10px 16px; }
+  }
 </style>
 </head>
 <body>
@@ -256,15 +293,16 @@ function sortKey(a){
 }
 
 function metricCell(w, kind){
+  const lbl = `<span class="clabel">${kind === 'session' ? 'Session &middot; 5h' : 'Weekly'}</span>`;
   if(!w || w.pct == null){
     const label = kind === 'session' ? 'no active session' : 'no data';
-    return `<div class="metric"><div class="pct is-idle">&mdash;</div><div class="meter is-idle"><i style="width:2%"></i></div><span class="reset muted">${label}</span></div>`;
+    return `<div class="metric">${lbl}<div class="pct is-idle">&mdash;</div><div class="meter is-idle"><i style="width:2%"></i></div><span class="reset muted">${label}</span></div>`;
   }
   const sev = sevOf(w.pct), cls = sevCls(sev);
   const width = Math.max(2, Math.min(100, w.pct));
   const live = w.pct > 0;
   const reset = live ? resetText(w.resetsAt) : (kind === 'session' ? 'idle' : 'at rest');
-  return `<div class="metric">
+  return `<div class="metric">${lbl}
     <div class="pct ${cls}">${w.pct}<span class="sym">%</span></div>
     <div class="meter ${cls}"><i style="width:${width}%"></i></div>
     <span class="reset ${sev==='alarm'?'is-alarm':''} ${live?'':'muted'}" ${live?`data-reset="${esc(w.resetsAt||'')}"`:''}>${esc(reset)}</span>
@@ -272,24 +310,26 @@ function metricCell(w, kind){
 }
 
 function modelCell(u){
-  if(!u) return `<div class="models"><span class="none">&mdash;</span></div>`;
+  const lbl = `<span class="clabel">Model &middot; wk</span>`;
+  if(!u) return `<div class="models">${lbl}<span class="none">&mdash;</span></div>`;
   const parts = [];
   for(const [name, w] of [['Opus', u.weeklyOpus], ['Sonnet', u.weeklySonnet]]){
     if(w && w.pct != null) parts.push(`<div class="mrow"><span class="ml">${name}</span><span class="mv ${sevCls(sevOf(w.pct))}">${w.pct}%</span></div>`);
   }
-  return `<div class="models">${parts.length ? parts.join('') : '<span class="none">&mdash;</span>'}</div>`;
+  return `<div class="models">${lbl}${parts.length ? parts.join('') : '<span class="none">&mdash;</span>'}</div>`;
 }
 
 function overageCell(u){
+  const lbl = `<span class="clabel">Overage</span>`;
   const o = u && u.overage;
   if(o && o.enabled){
     const width = Math.max(2, Math.min(100, o.pct ?? 0));
-    return `<div class="overage">
+    return `<div class="overage">${lbl}
       <span class="amt"><b>${fmtUsd(o.usedUsd)}</b> <span class="of">of ${fmtUsd0(o.limitUsd)}</span></span>
       <div class="ometer ${sevCls(sevOf(o.pct))}"><i style="width:${width}%"></i></div>
     </div>`;
   }
-  return `<div class="overage"><span class="none">no overage</span></div>`;
+  return `<div class="overage">${lbl}<span class="none">no overage</span></div>`;
 }
 
 function rowFor(a){
