@@ -5,14 +5,16 @@ options:
     macOS: "14.0"
   createIntermediateGroups: true
 
+# Signing/team comes from Signing.xcconfig (gitignored; copy Signing.xcconfig.example).
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+
 settings:
   base:
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
-    CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "-"
-    CODE_SIGNING_REQUIRED: "NO"
 
 targets:
   CraigsClaudeCounter:

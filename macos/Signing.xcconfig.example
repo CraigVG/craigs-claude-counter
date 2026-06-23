@@ -1,0 +1,11 @@
+// Copy this file to "Signing.xcconfig" and set your Apple Developer Team ID
+// to build the signed app + widget:
+//
+//     cp Signing.xcconfig.example Signing.xcconfig
+//     # then edit DEVELOPMENT_TEAM below
+//
+// Find your Team ID at https://developer.apple.com/account (Membership details),
+// or in Xcode > Settings > Accounts. Leaving it blank builds unsigned (the app
+// still runs locally, but the widget won't load).
+DEVELOPMENT_TEAM =
+CODE_SIGN_STYLE = Automatic

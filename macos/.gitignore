@@ -6,3 +6,6 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .DS_Store
+
+# local signing (team id)
+Signing.xcconfig
