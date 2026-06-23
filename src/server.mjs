@@ -55,6 +55,27 @@ export async function ensureFresh(account, { oauth, credstore, now = Date.now(),
   return refreshAccount(account, { oauth, credstore, locks });
 }
 
+// Proactively keep tokens alive so accounts stay logged in even when the
+// dashboard is never opened. Refreshes any token within `refreshWithinMs` of
+// expiry, on a timer, through the single-flight lock. Returns a stop function.
+export function startBackgroundRefresh({ credstore, oauth, locks, intervalMs = 30 * 60_000, refreshWithinMs = 60 * 60_000, log = () => {} }) {
+  const tick = async () => {
+    let accounts = [];
+    try { accounts = await credstore.listAccounts(); } catch { return; }
+    const now = Date.now();
+    for (const a of accounts) {
+      if (!a.refreshToken) continue;
+      if (a.expiresAt && a.expiresAt - now > refreshWithinMs) continue; // still fresh enough
+      try { await refreshAccount(a, { oauth, credstore, locks }); log(`kept ${a.label} logged in`); }
+      catch (e) { log(`refresh failed for ${a.label}: ${e.needsRelogin ? 'needs re-login' : (e.message || e)}`); }
+    }
+  };
+  const timer = setInterval(() => { tick().catch(() => {}); }, intervalMs);
+  if (timer.unref) timer.unref();
+  tick().catch(() => {}); // run once at startup
+  return () => clearInterval(timer);
+}
+
 // Build the aggregate payload for one account, isolating all failures.
 // Uses an in-memory cache so the upstream endpoint is hit at most once per
 // account per cacheTtl, and serves the last-known value (stale) on errors.
@@ -249,13 +270,13 @@ export function createServer(deps = {}) {
   };
 
   const server = http.createServer(handler);
-  return { server, handler, config, credstore, logins };
+  return { server, handler, config, credstore, logins, refreshLocks };
 }
 
 // Entry point when run directly.
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-  const { server, handler, config } = createServer();
+  const { server, handler, config, credstore, refreshLocks } = createServer();
   server.listen(config.port, config.bindHost, () => {
     console.log(`Claude Usage Dashboard listening on http://${config.bindHost}:${config.port}`);
   });
@@ -265,4 +286,13 @@ if (isMain) {
       console.log(`Also on http://127.0.0.1:${config.port} (local)`);
     });
   }
+  // Keep accounts logged in even when nobody is viewing the dashboard.
+  startBackgroundRefresh({
+    credstore,
+    oauth: oauthLib,
+    locks: refreshLocks,
+    intervalMs: config.bgRefreshIntervalMs,
+    refreshWithinMs: config.bgRefreshWithinMs,
+    log: (m) => console.log(`[keepalive] ${m}`),
+  });
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, ensureFresh } from '../src/server.mjs';
+import { createServer, ensureFresh, startBackgroundRefresh } from '../src/server.mjs';
 import { OAUTH } from '../src/config.mjs';
 
 function memStore(seed = []) {
@@ -217,6 +217,22 @@ test('permanent refresh failure (400) surfaces needs_relogin with dimmed last-kn
     assert.equal(acc.error, 'needs_relogin'); // not silently served as fresh/stale
     assert.ok(acc.usage); // still includes last-known numbers for the dimmed display
   } finally { await new Promise((r) => server.close(r)); }
+});
+
+test('background refresh keeps near-expiry accounts alive, skips fresh ones', async () => {
+  let calls = 0;
+  const credstore = memStore([
+    { id: 'near', label: 'near', refreshToken: 'R1', expiresAt: Date.now() + 30_000 },      // within window -> refresh
+    { id: 'fresh', label: 'fresh', refreshToken: 'R2', expiresAt: Date.now() + 10 * 3600_000 }, // far -> skip
+    { id: 'noRT', label: 'noRT', expiresAt: Date.now() + 30_000 },                            // no refresh token -> skip
+  ]);
+  const oauth = { refresh: async ({ refreshToken }) => { calls++; return { accessToken: 'NEW', refreshToken: refreshToken + '+', expiresAt: Date.now() + 3600_000 }; } };
+  const stop = startBackgroundRefresh({ credstore, oauth, locks: new Map(), intervalMs: 9_999_999, refreshWithinMs: 60_000 });
+  await new Promise((r) => setTimeout(r, 40)); // let the startup tick run
+  stop();
+  assert.equal(calls, 1); // only 'near' was refreshed
+  assert.equal((await credstore.getAccount('near')).accessToken, 'NEW');
+  assert.equal((await credstore.getAccount('fresh')).accessToken, undefined); // untouched
 });
 
 test('GET / serves the dashboard html', async () => {

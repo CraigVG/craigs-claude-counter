@@ -20,7 +20,16 @@ Runs on your Mac, reachable across your Tailscale devices, never public. Account
 It calls the same endpoint the `claude` CLI's `/usage` command uses:
 `GET https://api.anthropic.com/api/oauth/usage` with each account's OAuth token.
 You log into each account once (standard Claude Code OAuth); the dashboard stores
-the tokens in your Keychain and **auto-refreshes** them forever after.
+the tokens in your Keychain and **auto-refreshes** them forever after — the same
+mechanism that keeps the `claude` CLI logged in for months.
+
+**Staying logged in:** access tokens are short-lived and refreshed automatically.
+Refreshes are single-flight (a rotating refresh token is never spent twice, which
+would otherwise trip Anthropic's reuse-detection and revoke the account), and the
+always-on server runs a background keep-alive that refreshes any token nearing
+expiry every 30 minutes — so accounts stay logged in even if you never open the
+page. You should not need to re-login unless you revoke access in your Anthropic
+account, or the same account+app is logged in by another tool that evicts it.
 
 ## Setup
 

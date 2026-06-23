@@ -72,6 +72,11 @@ export function loadConfig(env = process.env) {
     // account for this long (serving last-known data). Prevents an open tab
     // from sustaining the rate limit with a flood of failed retries.
     rateLimitCooldownMs: Number(env.CLAUDE_USAGE_COOLDOWN_MS || 120_000),
+    // Background token keep-alive: the always-on server proactively refreshes any
+    // access token expiring within `bgRefreshWithinMs`, every `bgRefreshIntervalMs`,
+    // so accounts stay logged in even if the dashboard is never opened.
+    bgRefreshIntervalMs: Number(env.CLAUDE_USAGE_BG_INTERVAL_MS || 30 * 60_000),
+    bgRefreshWithinMs: Number(env.CLAUDE_USAGE_BG_WITHIN_MS || 60 * 60_000),
     // Severity thresholds (percent utilization) for the UI bars.
     warnPct: Number(env.CLAUDE_USAGE_WARN || 70),
     critPct: Number(env.CLAUDE_USAGE_CRIT || 90),
