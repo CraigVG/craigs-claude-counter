@@ -19,7 +19,7 @@ cask "craigs-claude-counter" do
   desc "Dashboard for Claude Code usage limits across multiple accounts"
   homepage "https://github.com/CraigVG/craigs-claude-counter"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "CraigsClaudeCounter.app", target: "Craig's Claude Counter.app"
 
