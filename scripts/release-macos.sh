@@ -27,6 +27,7 @@ xcodebuild -project CraigsClaudeCounter.xcodeproj -scheme CraigsClaudeCounter \
   -configuration Release -derivedDataPath build -allowProvisioningUpdates \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$DEVID_IDENTITY" DEVELOPMENT_TEAM="$TEAMID" \
   ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS="--timestamp" \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   build 2>&1 | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED" || true
 
 APP="build/Build/Products/Release/CraigsClaudeCounter.app"
