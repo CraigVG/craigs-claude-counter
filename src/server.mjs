@@ -11,9 +11,40 @@ import * as usageLib from './usage.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(__dirname, '..', 'web');
 
+// Single-flight token refresh per account. Concurrent callers share one refresh
+// promise so a rotating refresh token is never spent twice — Anthropic rotates
+// refresh tokens and revokes the whole chain if one is reused (reuse detection),
+// which is what silently killed all accounts before this guard existed.
+export async function refreshAccount(account, { oauth, credstore, locks }) {
+  if (locks && locks.has(account.id)) return locks.get(account.id);
+  const p = (async () => {
+    let tokens;
+    try {
+      tokens = await oauth.refresh({ refreshToken: account.refreshToken });
+    } catch (e) {
+      // 400/401 means the refresh token itself is dead -> the user must re-login.
+      if (e.status === 400 || e.status === 401) e.needsRelogin = true;
+      throw e;
+    }
+    const updated = {
+      ...account,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken || account.refreshToken,
+      expiresAt: tokens.expiresAt,
+    };
+    await credstore.putAccount(updated);
+    return updated;
+  })();
+  if (locks) {
+    locks.set(account.id, p);
+    p.catch(() => {}).finally(() => { if (locks.get(account.id) === p) locks.delete(account.id); });
+  }
+  return p;
+}
+
 // Refresh an account's token if it is missing or close to expiry. Persists the
 // new token via credstore.putAccount. Returns the (possibly updated) account.
-export async function ensureFresh(account, { oauth, credstore, now = Date.now(), skewMs = REFRESH_SKEW_MS }) {
+export async function ensureFresh(account, { oauth, credstore, now = Date.now(), skewMs = REFRESH_SKEW_MS, locks } = {}) {
   const fresh = account.expiresAt && account.expiresAt - now > skewMs;
   if (fresh) return account;
   if (!account.refreshToken) {
@@ -21,24 +52,19 @@ export async function ensureFresh(account, { oauth, credstore, now = Date.now(),
     err.needsRelogin = true;
     throw err;
   }
-  const tokens = await oauth.refresh({ refreshToken: account.refreshToken });
-  const updated = {
-    ...account,
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken || account.refreshToken,
-    expiresAt: tokens.expiresAt,
-  };
-  await credstore.putAccount(updated);
-  return updated;
+  return refreshAccount(account, { oauth, credstore, locks });
 }
 
 // Build the aggregate payload for one account, isolating all failures.
 // Uses an in-memory cache so the upstream endpoint is hit at most once per
 // account per cacheTtl, and serves the last-known value (stale) on errors.
 async function accountUsage(account, deps) {
-  const { oauth, credstore, usage, thresholds, cache, cacheTtl = 60_000, cooldownMs = 120_000, now = Date.now() } = deps;
+  const { oauth, credstore, usage, thresholds, cache, locks, cacheTtl = 60_000, cooldownMs = 120_000, now = Date.now() } = deps;
   const base = { id: account.id, label: account.label, tier: account.tier || null };
   const cached = cache && cache.get(account.id);
+  // Permanent auth failure: surface it (with dimmed last-known data) instead of
+  // silently serving stale cache forever.
+  const needsRelogin = () => ({ ...base, error: 'needs_relogin', message: 'sign in again', usage: (cached && cached.usage) || null, stale: !!(cached && cached.usage) });
 
   const serveStale = (extra) => cached && cached.usage
     ? { ...base, usage: cached.usage, stale: true, staleAgeMs: Date.now() - cached.fetchedAt, ...extra }
@@ -63,10 +89,12 @@ async function accountUsage(account, deps) {
   try {
     let acct;
     try {
-      acct = await ensureFresh(account, { oauth, credstore });
+      acct = await ensureFresh(account, { oauth, credstore, locks });
     } catch (e) {
-      return serveStale({ message: 'cached; token refresh failed' })
-        || { ...base, error: 'needs_relogin', message: String(e.message || e) };
+      if (e.needsRelogin) return needsRelogin();
+      // Transient refresh failure (network / 5xx): keep last-known data.
+      return serveStale({ message: `cached; refresh ${e.status || 'error'}` })
+        || { ...base, error: 'fetch_failed', status: e.status || null, message: String(e.message || e) };
     }
     try {
       const u = storeOk(await usage.fetchUsage(acct.accessToken, { thresholds }));
@@ -75,14 +103,13 @@ async function accountUsage(account, deps) {
       // One retry after a forced refresh on 401.
       if (e.status === 401 && acct.refreshToken) {
         try {
-          const tokens = await oauth.refresh({ refreshToken: acct.refreshToken });
-          const updated = { ...acct, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken || acct.refreshToken, expiresAt: tokens.expiresAt };
-          await credstore.putAccount(updated);
+          const updated = await refreshAccount(acct, { oauth, credstore, locks });
           const u = storeOk(await usage.fetchUsage(updated.accessToken, { thresholds }));
           return { ...base, usage: u };
         } catch (e2) {
+          if (e2.needsRelogin) return needsRelogin();
           return serveStale({ status: e2.status || 401, message: 'cached; re-auth failed' })
-            || { ...base, error: 'needs_relogin', message: String(e2.message || e2) };
+            || { ...base, error: 'fetch_failed', status: e2.status || null, message: String(e2.message || e2) };
         }
       }
       // 429 / 5xx / network: prefer last-known value over an error.
@@ -127,6 +154,7 @@ export function createServer(deps = {}) {
   const usage = deps.usage || usageLib;
   const logins = deps.logins || new Map(); // loginId -> {verifier, state, label}
   const usageCache = deps.usageCache || new Map(); // accountId -> {usage, fetchedAt}
+  const refreshLocks = deps.refreshLocks || new Map(); // accountId -> in-flight refresh promise
   const thresholds = { warnPct: config.warnPct, critPct: config.critPct };
 
   const handler = async (req, res) => {
@@ -142,7 +170,7 @@ export function createServer(deps = {}) {
       if (req.method === 'GET' && path === '/api/usage') {
         const accounts = await credstore.listAccounts();
         const results = await Promise.all(
-          accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
+          accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
         );
         return sendJson(res, 200, {
           generatedAt: new Date().toISOString(),
@@ -157,11 +185,11 @@ export function createServer(deps = {}) {
       }
 
       if (req.method === 'POST' && path === '/api/login/start') {
-        const { label } = await readBody(req);
+        const { label, replaceId } = await readBody(req);
         const { verifier, challenge } = oauth.generatePkce();
         const state = oauth.generateState();
         const loginId = newAccountId();
-        logins.set(loginId, { verifier, state, label: label || 'Account' });
+        logins.set(loginId, { verifier, state, label: label || 'Account', replaceId: replaceId || null });
         const authorizeUrl = oauth.buildAuthorizeUrl({ challenge, state, oauth: config.oauth });
         return sendJson(res, 200, { loginId, authorizeUrl });
       }
@@ -182,7 +210,8 @@ export function createServer(deps = {}) {
           return sendJson(res, 400, { error: 'exchange_failed', message: String(e.message || e) });
         }
         logins.delete(loginId);
-        const id = newAccountId();
+        // Re-login replaces the existing account in place (no duplicate).
+        const id = pending.replaceId || newAccountId();
         // Auto-label from the account profile (email + plan); best-effort.
         let label = pending.label && pending.label !== 'Account' ? pending.label : null;
         let tier = null;
@@ -201,6 +230,9 @@ export function createServer(deps = {}) {
           expiresAt: tokens.expiresAt,
           tier,
         });
+        // Clear any stale cache / cooldown / in-flight lock for this account.
+        usageCache.delete(id);
+        refreshLocks.delete(id);
         return sendJson(res, 200, { ok: true, id, label });
       }
 

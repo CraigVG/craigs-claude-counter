@@ -147,6 +147,10 @@ function bar(w){
 function card(a){
   if(a.error){
     const bad = a.error === 'needs_relogin';
+    const u = a.usage || {};
+    const oldSession = u.session && {...u.session, name:'Session (5h)'};
+    const oldWeekly  = u.weekly  && {...u.weekly,  name:'Weekly (all)'};
+    const dimmed = (a.usage) ? `<div style="opacity:.4;margin-top:10px">${bar(oldSession)}${bar(oldWeekly)}</div>` : '';
     return `<div class="card">
       <div class="card-head">
         <span class="label">${esc(a.label||a.id)}</span>
@@ -155,7 +159,8 @@ function card(a){
         <button class="iconbtn" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}">remove</button>
       </div>
       <div class="err ${bad?'bad':''}">${bad?'Needs re-login':'Temporarily unavailable'} — ${esc(a.message||a.error)}</div>
-      ${bad?`<button data-relogin="1">Re-login</button>`:''}
+      ${bad?`<button class="primary" data-relogin="${esc(a.id)}" data-label="${esc(a.label||a.id)}">Re-login</button>`:''}
+      ${dimmed}
     </div>`;
   }
   const u = a.usage || {};
@@ -217,7 +222,7 @@ function render(){
   $('#updated').textContent = 'updated ' + new Date(latest.generatedAt).toLocaleTimeString();
   // wire per-card buttons
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del, b.dataset.label));
-  document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = addAccount);
+  document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = () => addAccount(b.dataset.relogin, b.dataset.label));
 }
 
 function tickCountdowns(){
@@ -238,22 +243,26 @@ async function load(){
 // ---- modal-driven account management ----
 const modal = $('#modal'), modalBody = $('#modal-body'), modalTitle = $('#modal-title');
 let pendingLoginId = null;
+let pendingReplaceId = null;
 $('#modal-x').onclick = closeModal;
 modal.onclick = (e) => { if(e.target === modal) closeModal(); };
 function openModal(title, html){ modalTitle.textContent = title; modalBody.innerHTML = html; modal.style.display = 'flex'; }
-function closeModal(){ modal.style.display = 'none'; modalBody.innerHTML = ''; pendingLoginId = null; }
+function closeModal(){ modal.style.display = 'none'; modalBody.innerHTML = ''; pendingLoginId = null; pendingReplaceId = null; }
 
-function addAccount(){
+function addAccount(replaceId, replaceLabel){
   pendingLoginId = null;
-  openModal('Add account', `
+  pendingReplaceId = replaceId || null;
+  const reLogin = !!replaceId;
+  openModal(reLogin ? `Re-login ${replaceLabel||''}` : 'Add account', `
     <div class="step" data-step="1" style="display:block">
-      <label for="m-label">Optional label (blank = use the account's email)</label>
-      <input id="m-label" placeholder="e.g. work / personal / client X" />
+      ${reLogin ? `<p>Sign in again to <b>${esc(replaceLabel||'this account')}</b> to restore live data (the old token expired/was revoked).</p>` : ''}
+      <label for="m-label">${reLogin ? 'Label (optional)' : "Optional label (blank = use the account's email)"}</label>
+      <input id="m-label" placeholder="e.g. work / personal / client X" value="${reLogin ? esc(replaceLabel||'') : ''}" />
       <div class="actions"><button id="m-getlink" class="primary">Open Claude login</button></div>
       <div class="msg" id="m-msg1"></div>
     </div>
     <div class="step" data-step="2">
-      <p>A login tab opened. Log into the account you want to track, approve, then copy the code Claude shows and paste it below. To add a <b>different</b> account, switch accounts on claude.ai (or use a private window) first.</p>
+      <p>A login tab opened. ${reLogin ? `Log into <b>${esc(replaceLabel||'the same account')}</b>` : 'Log into the account you want to track'}, approve, then copy the code Claude shows and paste it below. To use a <b>different</b> account, switch accounts on claude.ai (or use a private window) first.</p>
       <div id="m-linkwrap"></div>
       <label for="m-code">Paste the code</label>
       <textarea id="m-code" placeholder="paste the code from Claude here"></textarea>
@@ -278,7 +287,7 @@ modalBody.addEventListener('click', async (ev) => {
     const label = $('#m-label').value || '';
     $('#m-msg1').className = 'msg'; $('#m-msg1').textContent = 'Starting...';
     try{
-      const r = await fetch('/api/login/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+      const r = await fetch('/api/login/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label, replaceId: pendingReplaceId})});
       const s = await r.json();
       pendingLoginId = s.loginId;
       $('#m-linkwrap').innerHTML = `<p>If no tab opened: <a class="authlink" href="${s.authorizeUrl}" target="_blank" rel="noopener">open the login link</a></p>`;

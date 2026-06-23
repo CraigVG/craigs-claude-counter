@@ -188,6 +188,37 @@ test('circuit breaker stops calling upstream during a 429 cooldown', async () =>
   } finally { await close(); }
 });
 
+test('single-flight: concurrent refreshes share one upstream refresh call', async () => {
+  let calls = 0;
+  const credstore = memStore();
+  const oauth = { refresh: async ({ refreshToken }) => { calls++; await new Promise((r) => setTimeout(r, 20)); return { accessToken: 'NEW', refreshToken: refreshToken + '+', expiresAt: Date.now() + 3600_000 }; } };
+  const locks = new Map();
+  const account = { id: 'a', accessToken: 'OLD', refreshToken: 'RT', expiresAt: Date.now() + 1000 }; // near expiry -> needs refresh
+  const results = await Promise.all([
+    ensureFresh(account, { oauth, credstore, locks }),
+    ensureFresh(account, { oauth, credstore, locks }),
+    ensureFresh(account, { oauth, credstore, locks }),
+  ]);
+  assert.equal(calls, 1); // 3 concurrent callers, ONE refresh (no token reuse)
+  assert.ok(results.every((r) => r.accessToken === 'NEW'));
+});
+
+test('permanent refresh failure (400) surfaces needs_relogin with dimmed last-known data', async () => {
+  const credstore = memStore([{ id: 'a', label: 'a@x', accessToken: 'OLD', refreshToken: 'RT', expiresAt: Date.now() - 1000 }]); // expired
+  const usage = { fetchUsage: async () => goodUsage };
+  const oauth = { refresh: async () => { const e = new Error('invalid_grant'); e.status = 400; throw e; } };
+  const usageCache = new Map([['a', { usage: goodUsage, fetchedAt: Date.now() - 10 * 60_000 }]]); // stale cache present
+  const { server } = createServer({ config: baseConfig, credstore, usage, oauth, usageCache });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const { port } = server.address();
+  try {
+    const body = await (await fetch(`http://127.0.0.1:${port}/api/usage`)).json();
+    const acc = body.accounts[0];
+    assert.equal(acc.error, 'needs_relogin'); // not silently served as fresh/stale
+    assert.ok(acc.usage); // still includes last-known numbers for the dimmed display
+  } finally { await new Promise((r) => server.close(r)); }
+});
+
 test('GET / serves the dashboard html', async () => {
   const { base, close } = await boot({ credstore: memStore(), usage: {}, oauth: {} });
   try {
