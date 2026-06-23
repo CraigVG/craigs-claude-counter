@@ -19,22 +19,27 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        ZStack {
-            Theme.bg.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                if accounts.isEmpty {
-                    summaryless
-                } else {
-                    SummaryStrip(accounts: accounts, now: model.tick)
-                    board
-                    legend
+        GeometryReader { geo in
+            let narrow = geo.size.width < 760
+            ZStack {
+                Theme.bg.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: narrow ? 13 : 18) {
+                    header(narrow: narrow)
+                    if accounts.isEmpty {
+                        summaryless
+                        Spacer(minLength: 0)
+                    } else {
+                        SummaryStrip(accounts: accounts, now: model.tick)
+                        ScrollView(showsIndicators: false) {
+                            if narrow { cardsList } else { board }
+                        }
+                        legend(narrow: narrow)
+                    }
                 }
-                Spacer(minLength: 0)
+                .padding(narrow ? 16 : 24)
             }
-            .padding(24)
         }
-        .frame(minWidth: 900, minHeight: 460)
+        .frame(minWidth: 380, minHeight: 360)
         .sheet(item: $model.activeSheet) { sheet in
             switch sheet {
             case .add:
@@ -48,21 +53,33 @@ struct DashboardView: View {
     }
 
     // MARK: header
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+    private func header(narrow: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: narrow ? 8 : 12) {
             Circle().fill(Theme.accent).frame(width: 8, height: 8)
                 .overlay(Circle().stroke(Theme.accent.opacity(0.18), lineWidth: 3))
-            Text("Craig's Claude Counter").font(Theme.ui(17, .semibold)).foregroundColor(Theme.ink)
-            if !accounts.isEmpty {
+            Text(narrow ? "Claude Counter" : "Craig's Claude Counter")
+                .font(Theme.ui(narrow ? 15 : 17, .semibold)).foregroundColor(Theme.ink)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            if !narrow && !accounts.isEmpty {
                 Text("\(accounts.count) account\(accounts.count == 1 ? "" : "s")")
                     .font(Theme.mono(12, .regular)).foregroundColor(Theme.ink3)
             }
-            Spacer()
-            freshness
-            Button { Task { await model.load() } } label: { Text("\u{21bb}  Refresh") }
+            Spacer(minLength: 8)
+            if !narrow { freshness }
+            Button { Task { await model.load() } } label: { Text(narrow ? "\u{21bb}" : "\u{21bb}  Refresh") }
                 .buttonStyle(SoftButton())
-            Button { model.openAddAccount() } label: { Text("+  Add account") }
+            Button { model.openAddAccount() } label: { Text(narrow ? "+" : "+  Add account") }
                 .buttonStyle(SoftButton())
+        }
+    }
+
+    private var cardsList: some View {
+        VStack(spacing: 12) {
+            ForEach(accounts) { a in
+                AccountCard(a: a, now: model.tick,
+                            onRelogin: { model.openReLogin(a) },
+                            onRemove: { model.openRemove(a) })
+            }
         }
     }
 
@@ -116,13 +133,20 @@ struct DashboardView: View {
         Text(s).font(Theme.mono(10.5, .medium)).foregroundColor(Theme.ink3).tracking(1.0)
     }
 
-    private var legend: some View {
-        HStack(spacing: 18) {
-            legendKey(Theme.calm, "fine <70%")
-            legendKey(Theme.warn, "warning 70–89%")
-            legendKey(Theme.alarm, "at limit ≥90%")
-            Spacer()
-            Text("sorted by constraint · most-constrained on top")
+    private func legend(narrow: Bool) -> some View {
+        HStack(spacing: narrow ? 12 : 18) {
+            if narrow {
+                freshness
+                Spacer()
+                legendKey(Theme.warn, "70%+")
+                legendKey(Theme.alarm, "90%+")
+            } else {
+                legendKey(Theme.calm, "fine <70%")
+                legendKey(Theme.warn, "warning 70–89%")
+                legendKey(Theme.alarm, "at limit ≥90%")
+                Spacer()
+                Text("sorted by constraint · most-constrained on top")
+            }
         }
         .font(Theme.mono(11, .regular)).foregroundColor(Theme.ink4)
         .padding(.top, 2)
@@ -265,6 +289,7 @@ struct MetricCell: View {
 struct Meter: View {
     let pct: Double
     let sev: Severity
+    var maxW: CGFloat = 140
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
@@ -273,7 +298,8 @@ struct Meter: View {
                     .frame(width: max(3, geo.size.width * min(100, max(2, pct)) / 100))
             }
         }
-        .frame(width: 140, height: 4)
+        .frame(maxWidth: maxW, alignment: .leading)
+        .frame(height: 4)
     }
 }
 
@@ -336,9 +362,11 @@ struct SummaryStrip: View {
                 .background(sigColor(info.tone).opacity(0.10))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(sigColor(info.tone).opacity(0.5), lineWidth: 1))
             Text(info.line).font(Theme.ui(14)).foregroundColor(Theme.ink2)
-            Spacer()
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
             Text(info.attn > 0 ? "\(info.attn) of \(info.total) need attention" : "all \(info.total) healthy")
                 .font(Theme.mono(12.5, .regular)).foregroundColor(Theme.ink3)
+                .lineLimit(1).fixedSize()
         }
         .padding(.horizontal, 20).padding(.vertical, 15)
         .background(Theme.panel)
