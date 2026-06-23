@@ -219,13 +219,26 @@ function render(){
   $('#grid').innerHTML = accounts.map(card).join('');
   $('#empty').style.display = accounts.length ? 'none' : 'block';
   renderSummary(accounts);
-  $('#updated').textContent = 'updated ' + new Date(latest.generatedAt).toLocaleTimeString();
+  updateFreshness();
   // wire per-card buttons
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del, b.dataset.label));
   document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = () => addAccount(b.dataset.relogin, b.dataset.label));
 }
 
+let lastError = null;
+// Show how fresh the PAGE is (not just the server's clock), so a paused/throttled
+// background tab is obvious instead of looking live.
+function updateFreshness(){
+  const el = $('#updated');
+  if(lastError){ el.textContent = lastError; el.style.color = 'var(--warn)'; return; }
+  if(!latest){ el.textContent = ''; return; }
+  const s = Math.max(0, Math.round((Date.now() - new Date(latest.generatedAt).getTime())/1000));
+  el.textContent = s < 2 ? 'updated just now' : `updated ${s<60? s+'s' : Math.floor(s/60)+'m '+(s%60)+'s'} ago`;
+  el.style.color = s > 90 ? 'var(--warn)' : ''; // page is behind -> warn
+}
+
 function tickCountdowns(){
+  updateFreshness();
   document.querySelectorAll('[data-reset]').forEach(el=>{
     const iso = el.getAttribute('data-reset');
     if(iso) el.textContent = fmtCountdown(iso);
@@ -236,8 +249,9 @@ async function load(){
   try{
     const r = await fetch('/api/usage');
     latest = await r.json();
+    lastError = null;
     render();
-  }catch(e){ $('#updated').textContent = 'offline — retrying…'; }
+  }catch(e){ lastError = 'offline — retrying…'; updateFreshness(); }
 }
 
 // ---- modal-driven account management ----
@@ -322,6 +336,11 @@ modalBody.addEventListener('click', async (ev) => {
 
 $('#refresh').onclick = load;
 $('#add').onclick = addAccount;
+// Refresh instantly when the tab regains focus / the browser un-freezes it, so a
+// throttled background tab never shows stale data once you look at it again.
+document.addEventListener('visibilitychange', () => { if(!document.hidden) load(); });
+window.addEventListener('focus', load);
+window.addEventListener('online', load);
 load();
 setInterval(load, 30000);
 setInterval(tickCountdowns, 1000);
