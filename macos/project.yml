@@ -10,7 +10,6 @@ settings:
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
-    PRODUCT_NAME: CraigsClaudeCounter
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGNING_REQUIRED: "NO"
@@ -22,11 +21,31 @@ targets:
     sources:
       - path: App
       - path: Shared
+    dependencies:
+      - target: CounterWidget
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.craigvg.craigs-claude-counter
+        PRODUCT_NAME: CraigsClaudeCounter
         GENERATE_INFOPLIST_FILE: "NO"
         INFOPLIST_FILE: App/Info.plist
         ENABLE_HARDENED_RUNTIME: "NO"
         COMBINE_HIDPI_IMAGES: "YES"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  CounterWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widget
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.craigvg.craigs-claude-counter.widget
+        PRODUCT_NAME: CounterWidget
+        GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_FILE: Widget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Widget/Widget.entitlements
+        ENABLE_HARDENED_RUNTIME: "NO"
+        SKIP_INSTALL: "YES"
