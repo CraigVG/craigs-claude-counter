@@ -1,37 +1,14 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
   html,body{margin:0;padding:0;background:transparent}
-  svg{display:block}
+  .canvas{width:1024px;height:1024px;position:relative}
+  .tile{position:absolute;left:104px;top:100px;width:816px;height:816px;border-radius:186px;
+        background:linear-gradient(180deg,#1c212b,#0e1014);
+        box-shadow:0 16px 42px rgba(0,0,0,.52);
+        border:1px solid #333b48;
+        display:flex;align-items:center;justify-content:center}
+  .tile img{width:540px;height:540px}
 </style></head><body>
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1c212b"/>
-      <stop offset="1" stop-color="#0e1014"/>
-    </linearGradient>
-    <linearGradient id="arc" x1="0.1" y1="0" x2="0.9" y2="1">
-      <stop offset="0" stop-color="#e8b54a"/>
-      <stop offset="0.55" stop-color="#e57b46"/>
-      <stop offset="1" stop-color="#e5484d"/>
-    </linearGradient>
-    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="16" stdDeviation="26" flood-color="#000" flood-opacity="0.5"/>
-    </filter>
-  </defs>
-
-  <!-- rounded tile -->
-  <rect x="104" y="100" width="816" height="816" rx="186" fill="url(#bg)" filter="url(#sh)"/>
-  <rect x="105" y="101" width="814" height="814" rx="185" fill="none" stroke="#333b48" stroke-width="2" opacity="0.8"/>
-
-  <!-- gauge track (270deg, gap at bottom) -->
-  <path d="M 335.2 688.8 A 250 250 0 1 1 688.8 688.8" fill="none"
-        stroke="#262c37" stroke-width="58" stroke-linecap="round"/>
-  <!-- filled portion (~205deg) -->
-  <path d="M 335.2 688.8 A 250 250 0 1 1 740.6 503.6" fill="none"
-        stroke="url(#arc)" stroke-width="58" stroke-linecap="round"/>
-
-  <!-- center percent mark -->
-  <text x="512" y="548" text-anchor="middle"
-        font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,monospace"
-        font-size="230" font-weight="700" fill="#e7eaef" letter-spacing="-6">%</text>
-</svg>
+  <div class="canvas">
+    <div class="tile"><img src="icon-mark.svg"></div>
+  </div>
 </body></html>
