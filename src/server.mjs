@@ -278,7 +278,7 @@ const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.arg
 if (isMain) {
   const { server, handler, config, credstore, refreshLocks } = createServer();
   server.listen(config.port, config.bindHost, () => {
-    console.log(`Claude Usage Dashboard listening on http://${config.bindHost}:${config.port}`);
+    console.log(`Craig's Claude Counter listening on http://${config.bindHost}:${config.port}`);
   });
   // Also serve on loopback so localhost + the CLI work, without exposing the LAN.
   if (config.bindHost !== '127.0.0.1') {

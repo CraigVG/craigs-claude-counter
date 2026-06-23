@@ -243,8 +243,17 @@ function resetText(iso){ const t = shortDur(iso); return t==='now' ? 'resettingâ
 // severity buckets â€” color is a signal only
 function sevOf(pct){ if(pct == null) return 'idle'; if(pct >= 90) return 'alarm'; if(pct >= 70) return 'warn'; if(pct <= 0) return 'idle'; return 'normal'; }
 const sevCls = (sev) => sev==='alarm' ? 'is-alarm' : sev==='warn' ? 'is-warn' : sev==='idle' ? 'is-idle' : '';
-function worstPct(a){ if(!a.usage) return -1; return Math.max(a.usage.session?.pct ?? 0, a.usage.weekly?.pct ?? 0); }
-function sortKey(a){ if(a.error === 'needs_relogin') return 1000; return worstPct(a); }
+function worstPct(a){ if(!a.usage) return 0; return Math.max(a.usage.session?.pct ?? 0, a.usage.weekly?.pct ?? 0); }
+// Tiered so the most-pressing row is on top and matches the summary headline:
+// at-limit (>=90) first, then needs-relogin, then warnings, then by usage, idle last.
+function sortKey(a){
+  const worst = worstPct(a);
+  let tier = 0;
+  if(a.usage && worst >= 90) tier = 3;
+  else if(a.error === 'needs_relogin') tier = 2;
+  else if(a.usage && worst >= 70) tier = 1;
+  return tier * 1000 + worst;
+}
 
 function metricCell(w, kind){
   if(!w || w.pct == null){
@@ -397,7 +406,24 @@ function tick(){
   });
 }
 
+// Demo mode (?demo): render representative fake accounts so the UI can be
+// previewed without signing in. No network, no real data.
+const DEMO = new URLSearchParams(location.search).has('demo');
+function demoData(){
+  const now = Date.now();
+  const at = (mins) => new Date(now + mins*60000).toISOString();
+  const win = (pct, mins) => ({ pct, resetsAt: pct>0 ? at(mins) : null, severity: 'normal' });
+  return { generatedAt: new Date(now).toISOString(), accounts: [
+    { id:'d1', label:'ops@example.com',    tier:'Max 20x', usage:{ session:win(100,52), weekly:win(61,3300), weeklySonnet:win(22,3300), overage:null } },
+    { id:'d2', label:'team@acme.dev',      tier:'Max 5x',  usage:{ session:win(78,128), weekly:win(44,5400), weeklySonnet:win(30,5400), overage:null } },
+    { id:'d3', label:'you@example.com',    tier:'Max 20x', usage:{ session:win(22,176), weekly:win(38,3180), weeklyOpus:win(12,3180), weeklySonnet:win(8,3180), overage:{enabled:true, usedUsd:128.40, limitUsd:1000, pct:13} } },
+    { id:'d4', label:'legacy@example.org', tier:'Pro',     error:'needs_relogin' },
+    { id:'d5', label:'personal@gmail.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:win(0,0), overage:null } },
+  ] };
+}
+
 async function load(){
+  if(DEMO){ latest = demoData(); lastError = null; render(); return; }
   try {
     const r = await fetch('/api/usage');
     latest = await r.json();

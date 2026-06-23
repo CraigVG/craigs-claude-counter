@@ -23,9 +23,11 @@ export const OAUTH = {
 export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 export const PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile';
 export const ANTHROPIC_BETA = 'oauth-2025-04-20';
-export const USER_AGENT = 'claude-usage-dashboard/1.0 (+tailnet)';
+export const USER_AGENT = 'craigs-claude-counter/1.0 (+tailnet)';
 
 // Keychain service name; every account is one generic-password under it.
+// NOTE: kept as 'claude-usage-dashboard' (the project's original name) so existing
+// installs keep their stored tokens across the rename. Override with CLAUDE_USAGE_KEYCHAIN.
 export const KEYCHAIN_SERVICE = 'claude-usage-dashboard';
 
 // Refresh an access token when it is within this window of expiring.

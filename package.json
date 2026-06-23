@@ -1,9 +1,12 @@
 {
-  "name": "claude-usage-dashboard",
+  "name": "craigs-claude-counter",
   "version": "1.0.0",
-  "private": true,
-  "description": "Tailnet-private dashboard for Claude Code session + weekly limits across multiple accounts",
+  "description": "A clean, calm dashboard for your Claude Code session + weekly limits across multiple accounts. Tailnet-private, zero dependencies, tokens stay in the macOS Keychain.",
   "type": "module",
+  "license": "MIT",
+  "author": "Craig Vander Galien",
+  "homepage": "https://github.com/CraigVG/craigs-claude-counter",
+  "repository": { "type": "git", "url": "https://github.com/CraigVG/craigs-claude-counter.git" },
   "engines": { "node": ">=18" },
   "scripts": {
     "start": "node src/server.mjs",

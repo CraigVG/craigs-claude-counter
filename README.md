@@ -1,123 +1,131 @@
-# Claude Usage Dashboard
+# Craig's Claude Counter
 
-One glanceable, auto-refreshing view of **session (5-hour)** and **weekly** limits across **all of your Claude Code accounts** at once — the thing single-account trackers don't do.
+**One calm, glanceable view of your Claude Code usage limits across every account you have.**
 
-Runs on your Mac, reachable across your Tailscale devices, never public. Account tokens live only in the macOS Keychain. Zero npm dependencies (Node built-ins only).
+If you run more than one Claude subscription (or just want to know how close you are to your 5‑hour and weekly limits before you hit the wall), this watches all of them at once and tells you the one thing that matters: *is anything about to run out, and when does it reset?*
 
-![one card per account: session bar, weekly bar, per-model sub-limits, overage, live "resets in…" countdowns]
+![Craig's Claude Counter — a clean status board of Claude usage across accounts](docs/screenshot.png)
+
+It's deliberately quiet. The board stays neutral when everything's fine; color only appears to escalate, so the account that's actually at its limit is the only red thing on screen.
+
+---
+
+## Why
+
+Claude Code shows *your current account's* usage with `/usage`. But if you have several accounts, there's no single place that shows all of them — and nothing that proactively tells you "the Sam's account is maxed for the next hour." This does.
 
 ## What it shows, per account
 
-- **Session (5h)** utilization % + reset countdown
-- **Weekly (all models)** utilization % + reset countdown
-- **Per-model weekly sub-limits** (Opus / Sonnet) when active
-- **Overage spend** ($ used of monthly cap) when extra usage is enabled
-- Plan badge (Max 20x / Max 5x / Pro), auto-detected from the account
-- A top summary: how many accounts and which is most constrained right now
+- **Session (5h)** and **Weekly** utilization, as percentages with live reset countdowns
+- **Per‑model weekly sub‑limits** (Opus / Sonnet) when active
+- **Overage** spend ($ used of your monthly cap), when extra usage is enabled
+- Plan tier (Max 20×, Max 5×, Pro), auto‑detected
+- A top summary: how many accounts need attention, and the single most‑pressing fact
+- Sorted with the most‑constrained account pinned to the top
 
 ## How it works
 
-It calls the same endpoint the `claude` CLI's `/usage` command uses:
-`GET https://api.anthropic.com/api/oauth/usage` with each account's OAuth token.
-You log into each account once (standard Claude Code OAuth); the dashboard stores
-the tokens in your Keychain and **auto-refreshes** them forever after — the same
+It reads the same endpoint the `claude` CLI's `/usage` command uses
+(`GET https://api.anthropic.com/api/oauth/usage`) with each account's OAuth token.
+You sign into each account **once** (the standard Claude Code OAuth flow); after that
+the tokens are refreshed automatically and the accounts **stay logged in** — the same
 mechanism that keeps the `claude` CLI logged in for months.
 
-**Staying logged in:** access tokens are short-lived and refreshed automatically.
-Refreshes are single-flight (a rotating refresh token is never spent twice, which
-would otherwise trip Anthropic's reuse-detection and revoke the account), and the
-always-on server runs a background keep-alive that refreshes any token nearing
-expiry every 30 minutes — so accounts stay logged in even if you never open the
-page. You should not need to re-login unless you revoke access in your Anthropic
-account, or the same account+app is logged in by another tool that evicts it.
+A few things it does carefully:
 
-## Setup
+- **Tokens live only in the macOS Keychain.** Never written to disk in plaintext, never logged, never committed.
+- **Single‑flight token refresh.** A rotating refresh token is never spent twice (which would trip Anthropic's reuse‑detection and revoke the account). Concurrent refreshes share one request.
+- **Background keep‑alive.** The server proactively refreshes tokens before they lapse, so accounts stay logged in even if you never open the page.
+- **Tailnet‑private, never public.** It binds to your [Tailscale](https://tailscale.com) IP (so you can check it from your phone) and `127.0.0.1` — never the public internet.
+- **Zero dependencies.** Pure Node built‑ins. Nothing to `npm install`.
 
-Requires Node 18+ and macOS (uses the Keychain). Tailscale optional (for cross-device access).
+> Not affiliated with Anthropic. It only ever reads *your own* usage, using the public Claude Code OAuth client (the same one the official CLI and other community tools use).
+
+## Quick start (web app)
+
+Requirements: **Node 18+** and **macOS** (it uses the Keychain).
 
 ```bash
-cd ~/claude-usage-dashboard
+git clone https://github.com/CraigVG/craigs-claude-counter.git
+cd craigs-claude-counter
 npm start
 ```
 
-It binds to **two** addresses: your Tailscale IP (so other tailnet devices can
-reach it) and `127.0.0.1` (local + the CLI). It deliberately does **not** bind to
-your LAN. It prints both URLs on start, e.g.:
-
-```
-Claude Usage Dashboard listening on http://100.126.121.49:4319
-Also on http://127.0.0.1:4319 (local)
-```
-
-From other computers/phones on your tailnet, use the MagicDNS name + port:
-
-```
-http://<your-mac-magicdns-name>:4319      e.g. http://craigs-macbook-pro-6.tailfd98e1.ts.net:4319
-```
-
-(`tailscale status` shows your device's MagicDNS name.)
-
-### Add your accounts (one-time each)
+It prints two URLs — your Tailscale IP (reachable from your other devices) and
+`http://127.0.0.1:4319` locally. Open it, then:
 
 1. Click **+ Add account**.
-2. A new tab opens to the Claude login. **Log into the account you want to track** and approve.
-   - To add a *different* account, log out of claude.ai in that tab first (or use a private window), so you authenticate as the right one.
-3. Copy the code Claude shows you and paste it back into the prompt.
-4. Repeat for each of your accounts.
+2. A login tab opens. Sign into the account you want to track and approve.
+   - To add a *different* account, switch accounts on claude.ai (or use a private window) first.
+3. Copy the code Claude shows you and paste it back in.
+4. Repeat for each account. They stay logged in afterward.
 
-That's it — tokens refresh automatically; you never re-login unless you revoke access.
+### Keep it always running
 
-## Run it continuously (optional)
-
-Keep it always running and starting at login:
+Install it as a background service that starts at login and restarts if it ever dies:
 
 ```bash
-mkdir -p ~/claude-usage-dashboard/logs
-# Edit the node path in the plist if `which node` differs:
-cp launchd/com.craigvg.claude-usage-dashboard.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.craigvg.claude-usage-dashboard.plist
+./scripts/install-service.sh      # macOS LaunchAgent
 ```
 
-Stop it: `launchctl unload ~/Library/LaunchAgents/com.craigvg.claude-usage-dashboard.plist`
+Remove it later with `./scripts/uninstall-service.sh`.
 
-## Quick terminal glance (optional)
+### See it from your phone / other computers
 
-```bash
-node bin/claude-usage        # prints a compact per-account table
-```
-
-## Cross-device over Tailscale
-
-Already works out of the box: the server binds to your Tailscale IP, so
-`http://<mac-magicdns-name>:4319` works from your iPhone/iPad/other Macs on the
-tailnet (see the URL it prints on start).
-
-Optional HTTPS + portless URL via `tailscale serve` (note: needs matching
-tailscale client/daemon versions; skip if `tailscale serve status` misbehaves):
+If you use Tailscale, the URL it prints (`http://<your-mac>.<tailnet>.ts.net:4319`)
+works from any device on your tailnet. For HTTPS + a portless URL:
 
 ```bash
 tailscale serve --bg 4319
-# then browse to https://<your-mac-magicdns-name>/
 ```
 
-## Configuration
+### Just want to look first?
 
-Copy `.env.example` to `.env` to override the port, bind host, poll interval, or
-severity thresholds. Defaults: port `4319`, bind = auto-detected Tailscale IP
-(else `127.0.0.1`), poll `30s`, warn `70%`, critical `90%`.
+Open `http://127.0.0.1:4319/?demo=1` for a preview with fake data — no sign‑in required.
+
+## macOS app + desktop widget
+
+A native macOS app (a window you keep on your desktop) and a **WidgetKit desktop
+widget** are in progress, so you can glance at your limits without a browser tab.
+They share the same backend and design language as the web app. Track it in
+[issues](https://github.com/CraigVG/craigs-claude-counter/issues).
 
 ## Security
 
-- Tokens are stored **only** in the macOS Keychain (service `claude-usage-dashboard`); never written to disk in plaintext, never logged.
-- Binds to your Tailscale IP or `127.0.0.1` — never the public `0.0.0.0`. Don't put this behind a public URL: the stored refresh tokens grant access to each subscription.
-- Only `api.anthropic.com`, `claude.ai`, and `platform.claude.com` are contacted.
+- Tokens are stored **only** in the macOS Keychain (service `claude-usage-dashboard`); never on disk in plaintext, never logged.
+- Binds to your Tailscale IP and `127.0.0.1` — never `0.0.0.0`/the public internet. Don't put it behind a public URL: the stored refresh tokens grant access to each subscription.
+- Only `api.anthropic.com`, `claude.ai`, and `platform.claude.com` are ever contacted.
 
-## Tests
+## Configuration
+
+Optional environment variables (sensible defaults; nothing required):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `CLAUDE_USAGE_PORT` | `4319` | Port to listen on |
+| `CLAUDE_USAGE_BIND` | auto (Tailscale IP, else `127.0.0.1`) | Bind host |
+| `CLAUDE_USAGE_POLL_MS` | `30000` | Browser poll interval |
+| `CLAUDE_USAGE_CACHE_MS` | `60000` | Min interval between upstream fetches per account |
+| `CLAUDE_USAGE_WARN` / `_CRIT` | `70` / `90` | Severity thresholds (%) |
+| `CLAUDE_USAGE_KEYCHAIN` | `claude-usage-dashboard` | Keychain service name |
+
+## Development
 
 ```bash
-npm test
+npm test     # node --test — unit + integration tests, zero deps
 ```
 
-## Design
+Layout:
 
-See [`docs/superpowers/specs/2026-06-18-claude-usage-dashboard-design.md`](docs/superpowers/specs/2026-06-18-claude-usage-dashboard-design.md).
+```
+src/         Node server + core logic (config, credstore, oauth, usage, server)
+web/         the browser dashboard (single self-contained index.html)
+bin/         claude-usage — a CLI table from the running server
+test/        node:test suites
+macos/       native app + widget (in progress)
+docs/        screenshots + design notes
+```
+
+## License
+
+[MIT](LICENSE) © Craig Vander Galien
