@@ -4,107 +4,220 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="dark" />
-<title>Claude Code Usage</title>
+<title>Craig's Claude Counter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #0d0f14; --panel: #161a22; --panel2: #1d2230; --line: #283041;
-    --text: #e7ebf2; --muted: #8b95a8; --accent: #c4724a;
-    --ok: #36c98e; --warn: #e8b13a; --crit: #ef5d63; --unknown: #5a6478;
+    --bg: #0e1014; --panel: #14171d; --panel-2: #171b22; --row-hover: #181c24;
+    --hair: #232830; --hair-soft: #1d2128;
+    --ink: #e7eaef; --ink-2: #aab3c0; --ink-3: #6f7886; --ink-4: #4a525e;
+    --calm: #3a4250; --warn: #d9a23a; --warn-bg: rgba(217,162,58,0.10);
+    --alarm: #e5484d; --alarm-bg: rgba(229,72,77,0.12); --alarm-edge: rgba(229,72,77,0.55);
+    --ok: #4e8a64;
+    --accent: #7c93b3;
+    --radius: 10px;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --ui: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
+  html, body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--ui);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
-  header {
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 18px 22px; border-bottom: 1px solid var(--line);
-    position: sticky; top: 0; background: rgba(13,15,20,.92); backdrop-filter: blur(8px); z-index: 5;
+  body { min-height: 100vh; display: flex; justify-content: center; padding: 38px 30px 52px; }
+  .app { width: 100%; max-width: 1320px; }
+
+  /* Header */
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+  .brand { display: flex; align-items: baseline; gap: 13px; min-width: 0; }
+  .brand h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0; white-space: nowrap; }
+  .brand .mark { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); transform: translateY(-2px); box-shadow: 0 0 0 3px rgba(124,147,179,0.12); flex: none; }
+  .acct-count { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
+  .controls { display: flex; align-items: center; gap: 8px; flex: none; }
+  .freshness { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.01em; display: inline-flex; align-items: center; gap: 7px; margin-right: 6px; white-space: nowrap; }
+  .freshness .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(78,138,100,0.14); flex: none; }
+  .freshness.behind { color: var(--warn); } .freshness.behind .dot { background: var(--warn); box-shadow: 0 0 0 3px rgba(217,162,58,0.14); }
+  .freshness.off { color: var(--alarm); } .freshness.off .dot { background: var(--alarm); box-shadow: 0 0 0 3px rgba(229,72,77,0.14); }
+  .btn { font-family: var(--ui); font-size: 12.5px; font-weight: 500; color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--hair); border-radius: 8px; padding: 7px 13px; cursor: pointer; letter-spacing: 0.01em; transition: background .12s ease, color .12s ease, border-color .12s ease; white-space: nowrap; }
+  .btn:hover { background: var(--row-hover); color: var(--ink); border-color: #2c333d; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn .ic { color: var(--ink-3); margin-right: 5px; }
+
+  /* Summary strip */
+  .summary { display: flex; align-items: center; gap: 18px; background: var(--panel); border: 1px solid var(--hair); border-left: 3px solid var(--hair); border-radius: var(--radius); padding: 15px 20px; margin-bottom: 22px; }
+  .summary.alarm { border-left-color: var(--alarm); }
+  .summary.warn { border-left-color: var(--warn); }
+  .summary.clear { border-left-color: var(--ok); }
+  .summary .sig { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; border-radius: 6px; padding: 5px 9px; white-space: nowrap; }
+  .summary.alarm .sig { color: var(--alarm); background: var(--alarm-bg); border: 1px solid var(--alarm-edge); }
+  .summary.warn .sig { color: var(--warn); background: var(--warn-bg); border: 1px solid rgba(217,162,58,0.5); }
+  .summary.clear .sig { color: var(--ok); background: rgba(78,138,100,0.10); border: 1px solid rgba(78,138,100,0.45); }
+  .summary .line { font-size: 14.5px; color: var(--ink-2); line-height: 1.45; min-width: 0; }
+  .summary .line b { color: var(--ink); font-weight: 600; }
+  .summary .line .mono { font-family: var(--mono); font-weight: 600; }
+  .summary.alarm .line .mono { color: var(--alarm); } .summary.warn .line .mono { color: var(--warn); } .summary.clear .line .mono { color: var(--ink); }
+  .summary .line .when { font-family: var(--mono); color: var(--ink-2); }
+  .summary .spacer { flex: 1; }
+  .summary .total { font-family: var(--mono); font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
+  .summary .total b { color: var(--ink); font-weight: 600; }
+
+  /* Board */
+  .board { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--radius); overflow: hidden; }
+  .board-scroll { overflow-x: auto; }
+  .grid {
+    display: grid;
+    grid-template-columns: 16px minmax(220px,1.6fr) 104px minmax(148px,1.3fr) minmax(148px,1.3fr) minmax(104px,0.85fr) minmax(150px,1.2fr) 96px;
+    align-items: center; min-width: 980px;
   }
-  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .2px; }
-  header .spacer { flex: 1; }
-  .meta { color: var(--muted); font-size: 13px; }
-  button {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-    border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer;
-  }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1207; font-weight: 600; }
-  .wrap { padding: 22px; max-width: 1200px; margin: 0 auto; }
-  .summary {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-    padding: 14px 18px; margin-bottom: 18px; display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
-  }
-  .summary .big { font-size: 22px; font-weight: 700; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
-  .card {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
-  }
-  .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-  .card-head .label { font-weight: 650; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tier {
-    font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2);
-    border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
-  }
-  .card-head .spacer { flex: 1; }
-  .iconbtn { padding: 3px 8px; font-size: 12px; color: var(--muted); }
-  .metric { margin: 12px 0; }
-  .metric .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
-  .metric .name { font-size: 13px; color: var(--muted); }
-  .metric .pct { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 14px; }
-  .metric .reset { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .bar { height: 9px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
-  .bar > span { display: block; height: 100%; border-radius: 999px; transition: width .4s ease; }
-  .sub { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
-  .sub .chip { font-size: 12px; color: var(--muted); }
-  .sub .chip b { color: var(--text); font-variant-numeric: tabular-nums; }
-  .overage { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); font-size: 13px; color: var(--muted); }
-  .overage b { color: var(--text); font-variant-numeric: tabular-nums; }
-  .s-normal { background: var(--ok); } .c-normal { color: var(--ok); }
-  .s-warning { background: var(--warn); } .c-warning { color: var(--warn); }
-  .s-critical { background: var(--crit); } .c-critical { color: var(--crit); }
-  .s-unknown { background: var(--unknown); } .c-unknown { color: var(--unknown); }
-  .err { color: var(--warn); font-size: 13px; padding: 10px 0; }
-  .err.bad { color: var(--crit); }
-  .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  a { color: var(--accent); }
-  .stale { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: 1px 6px; }
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; max-width: 540px; width: 100%; }
-  .modal-head { display: flex; align-items: center; margin-bottom: 12px; font-weight: 650; }
-  .modal-head .iconbtn { margin-left: auto; }
-  .modal label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 5px; }
-  .modal input, .modal textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 9px 11px; font: inherit; }
-  .modal textarea { min-height: 70px; resize: vertical; }
-  .modal p { color: var(--muted); font-size: 13px; margin: 6px 0; }
+  .head { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--hair); }
+  .head > div { padding: 13px 16px; }
+
+  .row { border-bottom: 1px solid var(--hair-soft); transition: background .12s ease; position: relative; }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--row-hover); }
+  .row > div { padding: 15px 16px; }
+  .tick { padding: 0 !important; }
+  .tick > span { display: block; width: 3px; height: 48px; margin: 0 auto; border-radius: 2px; background: transparent; }
+  .row.alarm .tick > span, .row.relogin .tick > span { background: var(--alarm); }
+  .row.warn .tick > span { background: var(--warn); }
+  .row.alarm { background: var(--alarm-bg); }
+  .row.alarm:hover { background: rgba(229,72,77,0.16); }
+  .row.relogin { background: rgba(229,72,77,0.05); }
+
+  .acct { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .acct .email { font-size: 14px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.idle .acct .email { color: var(--ink-2); }
+  .acct .tags { display: flex; gap: 7px; align-items: center; }
+  .tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--hair); color: var(--ink-3); }
+  .tag.cached { color: var(--warn); border-color: rgba(217,162,58,0.45); }
+  .tag.relogin { color: var(--alarm); border-color: var(--alarm-edge); }
+
+  .plan .pill { display: inline-block; font-family: var(--mono); font-size: 11.5px; border: 1px solid var(--hair); border-radius: 5px; padding: 3px 8px; color: var(--ink-2); background: var(--panel-2); white-space: nowrap; }
+
+  .metric { display: flex; flex-direction: column; gap: 7px; }
+  .row.relogin .metric, .row.errored .metric { opacity: 0.4; }
+  .pct { font-family: var(--mono); font-size: 23px; font-weight: 600; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "zero" 1; line-height: 1; color: var(--ink); letter-spacing: -0.01em; }
+  .pct .sym { font-size: 14px; font-weight: 500; color: var(--ink-3); margin-left: 1px; }
+  .pct.is-warn { color: var(--warn); } .pct.is-alarm { color: var(--alarm); }
+  .pct.is-idle { color: var(--ink-4); } .pct.is-idle .sym { color: var(--ink-4); }
+  .reset { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.01em; white-space: nowrap; }
+  .reset.is-alarm { color: #cf9a9c; } .reset.muted { color: var(--ink-4); }
+  .meter { height: 4px; width: 100%; max-width: 150px; background: #20242c; border-radius: 3px; overflow: hidden; }
+  .meter > i { display: block; height: 100%; border-radius: 3px; background: var(--calm); width: 0; transition: width .45s cubic-bezier(.2,.7,.3,1); }
+  .meter.is-warn > i { background: var(--warn); } .meter.is-alarm > i { background: var(--alarm); } .meter.is-idle > i { background: #262b33; }
+
+  .models { display: flex; flex-direction: column; gap: 5px; }
+  .mrow { display: flex; align-items: baseline; justify-content: flex-start; gap: 9px; }
+  .mrow .ml { font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; color: var(--ink-3); text-transform: uppercase; min-width: 46px; }
+  .mrow .mv { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); font-weight: 500; }
+  .mrow .mv.is-warn { color: var(--warn); } .mrow .mv.is-alarm { color: var(--alarm); }
+  .models .none { font-family: var(--mono); font-size: 12px; color: var(--ink-4); }
+
+  .overage { display: flex; flex-direction: column; gap: 7px; }
+  .overage .amt { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); letter-spacing: 0.01em; }
+  .overage .amt b { color: var(--ink); font-weight: 600; } .overage .amt .of { color: var(--ink-3); }
+  .ometer { height: 4px; width: 100%; max-width: 140px; background: #20242c; border-radius: 3px; overflow: hidden; }
+  .ometer > i { display: block; height: 100%; background: var(--calm); border-radius: 3px; }
+  .ometer.is-warn > i { background: var(--warn); } .ometer.is-alarm > i { background: var(--alarm); }
+  .overage .none { font-family: var(--mono); font-size: 11.5px; color: var(--ink-4); letter-spacing: 0.02em; }
+
+  .actions-cell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .rowbtn { font-family: var(--ui); font-size: 11.5px; cursor: pointer; border-radius: 7px; padding: 5px 9px; border: 1px solid var(--hair); background: transparent; color: var(--ink-3); transition: opacity .12s ease, color .12s, border-color .12s, background .12s; }
+  .rowbtn.del { opacity: 0; border-color: transparent; font-size: 13px; padding: 4px 8px; line-height: 1; }
+  .row:hover .rowbtn.del { opacity: 1; }
+  .rowbtn.del:hover { color: var(--alarm); border-color: var(--alarm-edge); background: var(--alarm-bg); }
+  .rowbtn.relogin { color: var(--alarm); border-color: var(--alarm-edge); background: var(--alarm-bg); font-weight: 500; }
+  .rowbtn.relogin:hover { background: rgba(229,72,77,0.18); }
+  .rowbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* entrance */
+  .row, .summary { animation: rise .3s cubic-bezier(.2,.7,.3,1) both; }
+  .row:nth-child(2){animation-delay:30ms}.row:nth-child(3){animation-delay:60ms}.row:nth-child(4){animation-delay:90ms}.row:nth-child(5){animation-delay:120ms}.row:nth-child(6){animation-delay:150ms}
+  @keyframes rise { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform:none;} }
+  @media (prefers-reduced-motion: reduce) { .row, .summary { animation: none; } .meter > i { transition: none; } }
+
+  .foot { margin-top: 15px; font-family: var(--mono); font-size: 11px; color: var(--ink-4); letter-spacing: 0.02em; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .foot .key { display: inline-flex; align-items: center; gap: 6px; }
+  .foot .swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+
+  .empty { text-align: center; color: var(--ink-3); padding: 64px 20px; font-size: 14px; line-height: 1.6; }
+  .empty b { color: var(--ink); }
+
+  /* Modal */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(6,8,11,.66); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+  .modal { background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; padding: 20px 22px; max-width: 540px; width: 100%; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+  .modal-head { display: flex; align-items: center; margin-bottom: 14px; font-weight: 600; font-size: 15px; }
+  .modal-head .x { margin-left: auto; background: none; border: none; color: var(--ink-3); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+  .modal-head .x:hover { color: var(--ink); background: var(--row-hover); }
+  .modal label { display: block; font-size: 12px; color: var(--ink-3); margin: 13px 0 5px; font-family: var(--mono); letter-spacing: 0.02em; text-transform: uppercase; }
+  .modal input, .modal textarea { width: 100%; background: var(--bg); border: 1px solid var(--hair); border-radius: 8px; color: var(--ink); padding: 9px 11px; font: 13px var(--mono); }
+  .modal input:focus, .modal textarea:focus { outline: none; border-color: var(--accent); }
+  .modal textarea { min-height: 64px; resize: vertical; }
+  .modal p { color: var(--ink-2); font-size: 13px; margin: 6px 0; line-height: 1.5; }
+  .modal p b { color: var(--ink); }
   .modal .actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
   .modal .step { display: none; }
-  .modal .msg { font-size: 13px; margin-top: 10px; min-height: 1em; }
-  .modal .msg.err { color: var(--crit); } .modal .msg.ok { color: var(--ok); }
+  .modal .msg { font-size: 12.5px; margin-top: 11px; min-height: 1em; font-family: var(--mono); }
+  .modal .msg.err { color: var(--alarm); } .modal .msg.ok { color: var(--ok); }
   .modal a.authlink { word-break: break-all; color: var(--accent); font-size: 12px; }
+  .modal .muted { color: var(--ink-3); font-size: 12px; }
+  button.primary { font-family: var(--ui); background: var(--accent); border: 1px solid var(--accent); color: #0c0f13; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost { font-family: var(--ui); background: transparent; border: 1px solid var(--hair); color: var(--ink-2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { border-color: #2c333d; color: var(--ink); }
 </style>
 </head>
 <body>
-  <header>
-    <h1>Claude&nbsp;Code Usage</h1>
-    <span id="updated" class="meta"></span>
-    <span class="spacer"></span>
-    <button id="refresh">Refresh</button>
-    <button id="add" class="primary">+ Add account</button>
-  </header>
-  <div class="wrap">
-    <div id="summary" class="summary" style="display:none"></div>
-    <div id="grid" class="grid"></div>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <h1>Craig's Claude Counter</h1>
+        <span class="acct-count" id="acct-count"></span>
+      </div>
+      <div class="controls">
+        <span class="freshness" id="freshness"><span class="dot" aria-hidden="true"></span><span id="updated"></span></span>
+        <button class="btn" id="refresh" type="button"><span class="ic" aria-hidden="true">&#x21bb;</span>Refresh</button>
+        <button class="btn" id="add" type="button"><span class="ic" aria-hidden="true">+</span>Add account</button>
+      </div>
+    </div>
+
+    <div id="summary" class="summary" role="status" style="display:none"></div>
+
+    <div class="board" id="board" style="display:none">
+      <div class="board-scroll">
+        <div class="grid head">
+          <div class="tick"></div>
+          <div>Account</div>
+          <div>Plan</div>
+          <div>Session&nbsp;&middot;&nbsp;5h</div>
+          <div>Weekly</div>
+          <div>Model&nbsp;wk</div>
+          <div>Overage</div>
+          <div></div>
+        </div>
+        <div id="rows"></div>
+      </div>
+    </div>
+
     <div id="empty" class="empty" style="display:none">
-      No accounts yet. Click <b>+ Add account</b> and log into each Claude Code account once.
+      No accounts yet. Click <b>+ Add account</b> and sign into each Claude account once &mdash;<br>they stay logged in after that.
+    </div>
+
+    <div class="foot" id="foot" style="display:none">
+      <span class="key"><span class="swatch" style="background:var(--calm)"></span> fine &lt;70%</span>
+      <span class="key"><span class="swatch" style="background:var(--warn)"></span> warning 70&ndash;89%</span>
+      <span class="key"><span class="swatch" style="background:var(--alarm)"></span> at limit &ge;90%</span>
+      <span style="flex:1"></span>
+      <span>sorted by constraint &middot; most-constrained on top</span>
     </div>
   </div>
 
   <div id="modal" class="modal-backdrop" style="display:none">
     <div class="modal">
-      <div class="modal-head"><span id="modal-title">Add account</span><button id="modal-x" class="iconbtn">✕</button></div>
+      <div class="modal-head"><span id="modal-title">Add account</span><button id="modal-x" class="x" aria-label="Close">&#x2715;</button></div>
       <div id="modal-body"></div>
     </div>
   </div>
@@ -112,154 +225,193 @@
 <script type="module">
 const $ = (s) => document.querySelector(s);
 let latest = null;
+let lastError = null;
 
-function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtUsd = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtUsd0 = (n) => '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
-function fmtCountdown(iso){
-  if(!iso) return '';
-  const ms = new Date(iso).getTime() - Date.now();
-  if(isNaN(ms)) return '';
-  if(ms <= 0) return 'resetting…';
-  const s = Math.floor(ms/1000);
-  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
-  if(d>0) return `resets in ${d}d ${h}h`;
-  if(h>0) return `resets in ${h}h ${m}m`;
-  return `resets in ${m}m`;
+function msLeft(iso){ if(!iso) return null; const ms = new Date(iso).getTime() - Date.now(); return isNaN(ms) ? null : ms; }
+function shortDur(iso){
+  const ms = msLeft(iso); if(ms == null) return '';
+  if(ms <= 0) return 'now';
+  const s = Math.floor(ms/1000), d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  return d>0 ? `${d}d ${h}h` : h>0 ? `${h}h ${m}m` : `${m}m`;
 }
+function resetText(iso){ const t = shortDur(iso); return t==='now' ? 'resetting…' : t ? `resets in ${t}` : ''; }
 
-function bar(w){
-  if(!w) return '';
-  const pct = Math.max(0, Math.min(100, w.pct ?? 0));
-  const sev = w.severity || 'unknown';
-  return `
-    <div class="metric">
-      <div class="row">
-        <span class="name">${esc(w.name)}</span>
-        <span class="pct c-${sev}">${w.pct==null?'—':w.pct+'%'}</span>
-      </div>
-      <div class="bar"><span class="s-${sev}" style="width:${pct}%"></span></div>
-      <div class="row" style="margin-top:4px;margin-bottom:0">
-        <span class="reset" data-reset="${esc(w.resetsAt||'')}">${esc(fmtCountdown(w.resetsAt))}</span>
-      </div>
-    </div>`;
-}
+// severity buckets — color is a signal only
+function sevOf(pct){ if(pct == null) return 'idle'; if(pct >= 90) return 'alarm'; if(pct >= 70) return 'warn'; if(pct <= 0) return 'idle'; return 'normal'; }
+const sevCls = (sev) => sev==='alarm' ? 'is-alarm' : sev==='warn' ? 'is-warn' : sev==='idle' ? 'is-idle' : '';
+function worstPct(a){ if(!a.usage) return -1; return Math.max(a.usage.session?.pct ?? 0, a.usage.weekly?.pct ?? 0); }
+function sortKey(a){ if(a.error === 'needs_relogin') return 1000; return worstPct(a); }
 
-function card(a){
-  if(a.error){
-    const bad = a.error === 'needs_relogin';
-    const u = a.usage || {};
-    const oldSession = u.session && {...u.session, name:'Session (5h)'};
-    const oldWeekly  = u.weekly  && {...u.weekly,  name:'Weekly (all)'};
-    const dimmed = (a.usage) ? `<div style="opacity:.4;margin-top:10px">${bar(oldSession)}${bar(oldWeekly)}</div>` : '';
-    return `<div class="card">
-      <div class="card-head">
-        <span class="label">${esc(a.label||a.id)}</span>
-        ${a.tier?`<span class="tier">${esc(a.tier)}</span>`:''}
-        <span class="spacer"></span>
-        <button class="iconbtn" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}">remove</button>
-      </div>
-      <div class="err ${bad?'bad':''}">${bad?'Needs re-login':'Temporarily unavailable'} — ${esc(a.message||a.error)}</div>
-      ${bad?`<button class="primary" data-relogin="${esc(a.id)}" data-label="${esc(a.label||a.id)}">Re-login</button>`:''}
-      ${dimmed}
-    </div>`;
+function metricCell(w, kind){
+  if(!w || w.pct == null){
+    const label = kind === 'session' ? 'no active session' : 'no data';
+    return `<div class="metric"><div class="pct is-idle">&mdash;</div><div class="meter is-idle"><i style="width:2%"></i></div><span class="reset muted">${label}</span></div>`;
   }
-  const u = a.usage || {};
-  const session = u.session && {...u.session, name:'Session (5h)'};
-  const weekly  = u.weekly  && {...u.weekly,  name:'Weekly (all)'};
-  const subs = [];
-  if(u.weeklyOpus)   subs.push(`<span class="chip">Opus wk <b class="c-${u.weeklyOpus.severity}">${u.weeklyOpus.pct}%</b></span>`);
-  if(u.weeklySonnet) subs.push(`<span class="chip">Sonnet wk <b class="c-${u.weeklySonnet.severity}">${u.weeklySonnet.pct}%</b></span>`);
-  let over = '';
-  if(u.overage && u.overage.enabled){
-    const o = u.overage;
-    over = `<div class="overage">Overage: <b>$${o.usedUsd.toFixed(2)}</b> of $${o.limitUsd.toFixed(2)} <span class="c-${severityForPct(o.pct)}">(${o.pct}%)</span></div>`;
-  }
-  return `<div class="card">
-    <div class="card-head">
-      <span class="label">${esc(a.label||a.id)}</span>
-      ${a.tier?`<span class="tier">${esc(a.tier)}</span>`:''}
-      ${a.stale?`<span class="stale" title="last-known data (${esc(a.message||'upstream unavailable')})">cached</span>`:''}
-      <span class="spacer"></span>
-      <button class="iconbtn" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}">remove</button>
-    </div>
-    ${bar(session)}
-    ${bar(weekly)}
-    ${subs.length?`<div class="sub">${subs.join('')}</div>`:''}
-    ${over}
+  const sev = sevOf(w.pct), cls = sevCls(sev);
+  const width = Math.max(2, Math.min(100, w.pct));
+  const live = w.pct > 0;
+  const reset = live ? resetText(w.resetsAt) : (kind === 'session' ? 'idle' : 'at rest');
+  return `<div class="metric">
+    <div class="pct ${cls}">${w.pct}<span class="sym">%</span></div>
+    <div class="meter ${cls}"><i style="width:${width}%"></i></div>
+    <span class="reset ${sev==='alarm'?'is-alarm':''} ${live?'':'muted'}" ${live?`data-reset="${esc(w.resetsAt||'')}"`:''}>${esc(reset)}</span>
   </div>`;
 }
 
-function severityForPct(p){ if(p==null) return 'unknown'; if(p>=90) return 'critical'; if(p>=70) return 'warning'; return 'normal'; }
+function modelCell(u){
+  if(!u) return `<div class="models"><span class="none">&mdash;</span></div>`;
+  const parts = [];
+  for(const [name, w] of [['Opus', u.weeklyOpus], ['Sonnet', u.weeklySonnet]]){
+    if(w && w.pct != null) parts.push(`<div class="mrow"><span class="ml">${name}</span><span class="mv ${sevCls(sevOf(w.pct))}">${w.pct}%</span></div>`);
+  }
+  return `<div class="models">${parts.length ? parts.join('') : '<span class="none">&mdash;</span>'}</div>`;
+}
 
-function renderSummary(accounts){
-  const live = accounts.filter(a=>a.usage);
+function overageCell(u){
+  const o = u && u.overage;
+  if(o && o.enabled){
+    const width = Math.max(2, Math.min(100, o.pct ?? 0));
+    return `<div class="overage">
+      <span class="amt"><b>${fmtUsd(o.usedUsd)}</b> <span class="of">of ${fmtUsd0(o.limitUsd)}</span></span>
+      <div class="ometer ${sevCls(sevOf(o.pct))}"><i style="width:${width}%"></i></div>
+    </div>`;
+  }
+  return `<div class="overage"><span class="none">no overage</span></div>`;
+}
+
+function rowFor(a){
+  const isRelogin = a.error === 'needs_relogin';
+  const isErrored = a.error && !isRelogin;
+  const u = a.usage;
+  const worst = u ? Math.max(u.session?.pct ?? 0, u.weekly?.pct ?? 0) : 0;
+  let cls = '';
+  if(isRelogin) cls = 'relogin';
+  else if(isErrored && !u) cls = 'errored';
+  else if(worst >= 90) cls = 'alarm';
+  else if(worst >= 70) cls = 'warn';
+  else if(worst <= 0) cls = 'idle';
+
+  const tags = [];
+  if(isRelogin) tags.push(`<span class="tag relogin">needs re-login</span>`);
+  else if(a.stale) tags.push(`<span class="tag cached" title="${esc(a.message||'showing last-known data')}">cached</span>`);
+  else if(isErrored) tags.push(`<span class="tag" title="${esc(a.message||a.error)}">unavailable</span>`);
+
+  const session = isErrored && !u ? null : (u && u.session);
+  const weekly  = isErrored && !u ? null : (u && u.weekly);
+
+  let actions = `<button class="rowbtn del" title="Remove from dashboard" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}" aria-label="Remove">&#x2715;</button>`;
+  if(isRelogin) actions = `<button class="rowbtn relogin" data-relogin="${esc(a.id)}" data-label="${esc(a.label||a.id)}">Re-login</button>` + actions;
+
+  return `<div class="grid row ${cls}">
+    <div class="tick"><span></span></div>
+    <div class="acct">
+      <span class="email" title="${esc(a.label||a.id)}">${esc(a.label||a.id)}</span>
+      ${tags.length ? `<span class="tags">${tags.join('')}</span>` : ''}
+    </div>
+    <div class="plan">${a.tier ? `<span class="pill">${esc(a.tier)}</span>` : '<span class="pill" style="color:var(--ink-4)">—</span>'}</div>
+    <div>${metricCell(session, 'session')}</div>
+    <div>${metricCell(weekly, 'weekly')}</div>
+    <div>${modelCell(u)}</div>
+    <div>${overageCell(u)}</div>
+    <div class="actions-cell">${actions}</div>
+  </div>`;
+}
+
+function buildSummary(accounts){
   const el = $('#summary');
-  if(!live.length){ el.style.display='none'; return; }
+  const live = accounts.filter(a => a.usage);
+  const relogin = accounts.filter(a => a.error === 'needs_relogin');
   let worst = null;
   for(const a of live){
-    for(const key of ['session','weekly']){
-      const w = a.usage[key];
-      if(w && (worst==null || (w.pct??0) > worst.pct)){
-        worst = { pct: w.pct??0, label: a.label, kind: key==='session'?'session':'weekly', sev: w.severity, resetsAt: w.resetsAt };
-      }
+    for(const k of ['session','weekly']){
+      const w = a.usage[k];
+      if(w && w.pct != null && (worst == null || w.pct > worst.pct))
+        worst = { pct: w.pct, label: a.label, kind: k, resetsAt: w.resetsAt };
     }
   }
-  el.style.display='flex';
+  const attn = live.filter(a => Math.max(a.usage.session?.pct ?? 0, a.usage.weekly?.pct ?? 0) >= 90).length + relogin.length;
+
+  let tone = 'clear', sig = 'All clear', line = '';
+  if(worst && worst.pct >= 90){
+    tone = 'alarm'; sig = 'At limit';
+    line = `<b>${esc(worst.label)}</b> is at <span class="mono">${worst.pct}%</span> (${worst.kind}) &mdash; <span class="when" data-reset="${esc(worst.resetsAt||'')}">${esc(resetText(worst.resetsAt))}</span>`;
+  } else if(relogin.length){
+    tone = 'alarm'; sig = 'Re-login';
+    line = relogin.length === 1
+      ? `<b>${esc(relogin[0].label)}</b> needs you to sign in again to resume tracking`
+      : `<b>${relogin.length} accounts</b> need you to sign in again to resume tracking`;
+  } else if(worst && worst.pct >= 70){
+    tone = 'warn'; sig = 'Warning';
+    line = `<b>${esc(worst.label)}</b> is at <span class="mono">${worst.pct}%</span> (${worst.kind}) &mdash; <span class="when" data-reset="${esc(worst.resetsAt||'')}">${esc(resetText(worst.resetsAt))}</span>`;
+  } else if(worst){
+    tone = 'clear'; sig = 'All clear';
+    line = `Most used: <b>${esc(worst.label)}</b> at <span class="mono">${worst.pct}%</span> &mdash; plenty of headroom`;
+  } else {
+    tone = 'clear'; sig = 'All clear'; line = `No usage across your accounts right now`;
+  }
+
+  el.className = `summary ${tone}`;
+  el.style.display = 'flex';
   el.innerHTML = `
-    <div><div class="meta">Accounts</div><div class="big">${live.length}${accounts.length>live.length?` <span class="meta">/ ${accounts.length}</span>`:''}</div></div>
-    <div><div class="meta">Most constrained</div>
-      <div class="big c-${worst.sev}">${worst.pct}% <span style="font-size:14px;font-weight:500" class="meta">${esc(worst.label)} · ${worst.kind}</span></div>
-      <div class="reset meta" data-reset="${esc(worst.resetsAt||'')}">${esc(fmtCountdown(worst.resetsAt))}</div>
-    </div>`;
+    <span class="sig">${sig}</span>
+    <div class="line">${line}</div>
+    <span class="spacer"></span>
+    <span class="total">${attn > 0 ? `<b>${attn}</b> of <b>${accounts.length}</b> need attention` : `all <b>${accounts.length}</b> healthy`}</span>`;
 }
 
 function render(){
   if(!latest) return;
-  const accounts = latest.accounts || [];
-  $('#grid').innerHTML = accounts.map(card).join('');
-  $('#empty').style.display = accounts.length ? 'none' : 'block';
-  renderSummary(accounts);
+  const accounts = [...(latest.accounts || [])].sort((a, b) => sortKey(b) - sortKey(a));
+  const has = accounts.length > 0;
+  $('#board').style.display = has ? 'block' : 'none';
+  $('#foot').style.display = has ? 'flex' : 'none';
+  $('#empty').style.display = has ? 'none' : 'block';
+  $('#acct-count').textContent = has ? `${accounts.length} account${accounts.length===1?'':'s'}` : '';
+  if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); buildSummary(accounts); }
+  else { $('#summary').style.display = 'none'; }
   updateFreshness();
-  // wire per-card buttons
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del, b.dataset.label));
   document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = () => addAccount(b.dataset.relogin, b.dataset.label));
 }
 
-let lastError = null;
-// Show how fresh the PAGE is (not just the server's clock), so a paused/throttled
-// background tab is obvious instead of looking live.
+// page freshness — a throttled/frozen tab is visible, not hidden
 function updateFreshness(){
-  const el = $('#updated');
-  if(lastError){ el.textContent = lastError; el.style.color = 'var(--warn)'; return; }
+  const fr = $('#freshness'), el = $('#updated');
+  fr.classList.remove('behind', 'off');
+  if(lastError){ el.textContent = lastError; fr.classList.add('off'); return; }
   if(!latest){ el.textContent = ''; return; }
   const s = Math.max(0, Math.round((Date.now() - new Date(latest.generatedAt).getTime())/1000));
-  el.textContent = s < 2 ? 'updated just now' : `updated ${s<60? s+'s' : Math.floor(s/60)+'m '+(s%60)+'s'} ago`;
-  el.style.color = s > 90 ? 'var(--warn)' : ''; // page is behind -> warn
+  el.textContent = s < 2 ? 'updated just now' : `updated ${s<60 ? s+'s' : Math.floor(s/60)+'m '+(s%60)+'s'} ago`;
+  if(s > 90) fr.classList.add('behind');
 }
 
-function tickCountdowns(){
+function tick(){
   updateFreshness();
-  document.querySelectorAll('[data-reset]').forEach(el=>{
+  document.querySelectorAll('[data-reset]').forEach(el => {
     const iso = el.getAttribute('data-reset');
-    if(iso) el.textContent = fmtCountdown(iso);
+    if(iso){ const t = el.classList.contains('when') ? resetText(iso) : resetText(iso); el.textContent = t; }
   });
 }
 
 async function load(){
-  try{
+  try {
     const r = await fetch('/api/usage');
     latest = await r.json();
     lastError = null;
     render();
-  }catch(e){ lastError = 'offline — retrying…'; updateFreshness(); }
+  } catch(e){ lastError = 'offline — retrying'; updateFreshness(); }
 }
 
 // ---- modal-driven account management ----
 const modal = $('#modal'), modalBody = $('#modal-body'), modalTitle = $('#modal-title');
-let pendingLoginId = null;
-let pendingReplaceId = null;
+let pendingLoginId = null, pendingReplaceId = null;
 $('#modal-x').onclick = closeModal;
 modal.onclick = (e) => { if(e.target === modal) closeModal(); };
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && modal.style.display !== 'none') closeModal(); });
 function openModal(title, html){ modalTitle.textContent = title; modalBody.innerHTML = html; modal.style.display = 'flex'; }
 function closeModal(){ modal.style.display = 'none'; modalBody.innerHTML = ''; pendingLoginId = null; pendingReplaceId = null; }
 
@@ -267,11 +419,11 @@ function addAccount(replaceId, replaceLabel){
   pendingLoginId = null;
   pendingReplaceId = replaceId || null;
   const reLogin = !!replaceId;
-  openModal(reLogin ? `Re-login ${replaceLabel||''}` : 'Add account', `
+  openModal(reLogin ? `Re-login` : 'Add account', `
     <div class="step" data-step="1" style="display:block">
-      ${reLogin ? `<p>Sign in again to <b>${esc(replaceLabel||'this account')}</b> to restore live data (the old token expired/was revoked).</p>` : ''}
-      <label for="m-label">${reLogin ? 'Label (optional)' : "Optional label (blank = use the account's email)"}</label>
-      <input id="m-label" placeholder="e.g. work / personal / client X" value="${reLogin ? esc(replaceLabel||'') : ''}" />
+      ${reLogin ? `<p>Sign in again to <b>${esc(replaceLabel||'this account')}</b> to restore live data. The old token expired or was revoked.</p>` : `<p class="muted">Sign into a Claude account once. It stays logged in afterward.</p>`}
+      <label for="m-label">${reLogin ? 'Label (optional)' : "Label — optional, defaults to the account email"}</label>
+      <input id="m-label" placeholder="e.g. work / personal / client" value="${reLogin ? esc(replaceLabel||'') : ''}" />
       <div class="actions"><button id="m-getlink" class="primary">Open Claude login</button></div>
       <div class="msg" id="m-msg1"></div>
     </div>
@@ -280,7 +432,7 @@ function addAccount(replaceId, replaceLabel){
       <div id="m-linkwrap"></div>
       <label for="m-code">Paste the code</label>
       <textarea id="m-code" placeholder="paste the code from Claude here"></textarea>
-      <div class="actions"><button id="m-finish" class="primary">Finish</button><span class="meta">or <a id="m-back" href="#">start over</a></span></div>
+      <div class="actions"><button id="m-finish" class="primary">Finish</button><span class="muted">or <a id="m-back" href="#">start over</a></span></div>
       <div class="msg" id="m-msg2"></div>
     </div>
   `);
@@ -288,62 +440,55 @@ function addAccount(replaceId, replaceLabel){
 
 function removeAccount(id, label){
   openModal('Remove account', `
-    <p>Remove <b>${esc(label||id)}</b> from the dashboard? This only forgets the token here; it does not affect the Claude subscription.</p>
-    <div class="actions"><button id="m-del" class="primary" data-id="${esc(id)}">Remove</button><button id="m-cancel">Cancel</button></div>
+    <p>Remove <b>${esc(label||id)}</b> from the dashboard? This only forgets the token here &mdash; it does not affect the Claude subscription.</p>
+    <div class="actions"><button id="m-del" class="primary" data-id="${esc(id)}">Remove</button><button id="m-cancel" class="ghost">Cancel</button></div>
     <div class="msg" id="m-msg3"></div>
   `);
 }
 
-// Single delegated handler for all modal buttons (survives innerHTML swaps).
 modalBody.addEventListener('click', async (ev) => {
   const t = ev.target;
   if(t.id === 'm-getlink'){
     const label = $('#m-label').value || '';
-    $('#m-msg1').className = 'msg'; $('#m-msg1').textContent = 'Starting...';
-    try{
-      const r = await fetch('/api/login/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label, replaceId: pendingReplaceId})});
+    $('#m-msg1').className = 'msg'; $('#m-msg1').textContent = 'Starting…';
+    try {
+      const r = await fetch('/api/login/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label, replaceId: pendingReplaceId }) });
       const s = await r.json();
       pendingLoginId = s.loginId;
-      $('#m-linkwrap').innerHTML = `<p>If no tab opened: <a class="authlink" href="${s.authorizeUrl}" target="_blank" rel="noopener">open the login link</a></p>`;
-      window.open(s.authorizeUrl,'_blank','noopener');
+      $('#m-linkwrap').innerHTML = `<p class="muted">If no tab opened: <a class="authlink" href="${s.authorizeUrl}" target="_blank" rel="noopener">open the login link</a></p>`;
+      window.open(s.authorizeUrl, '_blank', 'noopener');
       modalBody.querySelector('[data-step="1"]').style.display = 'none';
       modalBody.querySelector('[data-step="2"]').style.display = 'block';
-    }catch(e){ $('#m-msg1').className = 'msg err'; $('#m-msg1').textContent = 'Could not start: '+e; }
-  }
-  else if(t.id === 'm-back'){
+    } catch(e){ $('#m-msg1').className = 'msg err'; $('#m-msg1').textContent = 'Could not start: ' + e; }
+  } else if(t.id === 'm-back'){
     ev.preventDefault();
     modalBody.querySelector('[data-step="1"]').style.display = 'block';
     modalBody.querySelector('[data-step="2"]').style.display = 'none';
-  }
-  else if(t.id === 'm-finish'){
+  } else if(t.id === 'm-finish'){
     const code = $('#m-code').value.trim();
     if(!code){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Paste the code first.'; return; }
-    $('#m-msg2').className = 'msg'; $('#m-msg2').textContent = 'Exchanging...';
-    try{
-      const r = await fetch('/api/login/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginId: pendingLoginId, pastedCode: code})});
+    $('#m-msg2').className = 'msg'; $('#m-msg2').textContent = 'Exchanging…';
+    try {
+      const r = await fetch('/api/login/finish', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ loginId: pendingLoginId, pastedCode: code }) });
       const out = await r.json();
-      if(out.error){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Failed: '+(out.message||out.error); return; }
-      $('#m-msg2').className = 'msg ok'; $('#m-msg2').textContent = 'Added '+(out.label||'account');
+      if(out.error){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Failed: ' + (out.message || out.error); return; }
+      $('#m-msg2').className = 'msg ok'; $('#m-msg2').textContent = 'Added ' + (out.label || 'account');
       await load(); setTimeout(closeModal, 800);
-    }catch(e){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Failed: '+e; }
-  }
-  else if(t.id === 'm-del'){
-    try{ await fetch('/api/accounts/'+encodeURIComponent(t.dataset.id),{method:'DELETE'}); closeModal(); await load(); }
-    catch(e){ $('#m-msg3').className = 'msg err'; $('#m-msg3').textContent = 'Failed: '+e; }
-  }
-  else if(t.id === 'm-cancel'){ closeModal(); }
+    } catch(e){ $('#m-msg2').className = 'msg err'; $('#m-msg2').textContent = 'Failed: ' + e; }
+  } else if(t.id === 'm-del'){
+    try { await fetch('/api/accounts/' + encodeURIComponent(t.dataset.id), { method:'DELETE' }); closeModal(); await load(); }
+    catch(e){ $('#m-msg3').className = 'msg err'; $('#m-msg3').textContent = 'Failed: ' + e; }
+  } else if(t.id === 'm-cancel'){ closeModal(); }
 });
 
 $('#refresh').onclick = load;
-$('#add').onclick = addAccount;
-// Refresh instantly when the tab regains focus / the browser un-freezes it, so a
-// throttled background tab never shows stale data once you look at it again.
+$('#add').onclick = () => addAccount();
 document.addEventListener('visibilitychange', () => { if(!document.hidden) load(); });
 window.addEventListener('focus', load);
 window.addEventListener('online', load);
 load();
 setInterval(load, 30000);
-setInterval(tickCountdowns, 1000);
+setInterval(tick, 1000);
 </script>
 </body>
 </html>
