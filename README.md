@@ -85,10 +85,25 @@ Open `http://127.0.0.1:4319/?demo=1` for a preview with fake data — no sign‑
 
 ## macOS app + desktop widget
 
-A native macOS app (a window you keep on your desktop) and a **WidgetKit desktop
-widget** are in progress, so you can glance at your limits without a browser tab.
-They share the same backend and design language as the web app. Track it in
-[issues](https://github.com/CraigVG/craigs-claude-counter/issues).
+There's a **native macOS app** (a window you keep on your desktop, same Status
+Board, responsive down to a narrow side panel) and a **WidgetKit desktop widget**
+(small / medium / large) so you can glance at your limits without a browser tab.
+Both render natively in SwiftUI and read the same local engine — keep `npm start`
+(or the LaunchAgent) running and they show live data.
+
+A signed, notarized download + Homebrew cask are on the way. For now, build it:
+
+```bash
+cd macos
+cp Signing.xcconfig.example Signing.xcconfig   # set your Apple Developer Team ID
+xcodegen generate                              # brew install xcodegen
+xcodebuild -scheme CraigsClaudeCounter -configuration Debug \
+  -derivedDataPath build -allowProvisioningUpdates build
+cp -R build/Build/Products/Debug/CraigsClaudeCounter.app /Applications/
+open /Applications/CraigsClaudeCounter.app     # launch once to register the widget
+```
+
+Then add the widget: right-click the desktop → **Edit Widgets** → search **Claude Counter**.
 
 ## Security
 
@@ -122,7 +137,7 @@ src/         Node server + core logic (config, credstore, oauth, usage, server)
 web/         the browser dashboard (single self-contained index.html)
 bin/         claude-usage — a CLI table from the running server
 test/        node:test suites
-macos/       native app + widget (in progress)
+macos/       native SwiftUI app + WidgetKit desktop widget
 docs/        screenshots + design notes
 ```
 
