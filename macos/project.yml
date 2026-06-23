@@ -21,6 +21,7 @@ targets:
     platform: macOS
     sources:
       - path: App
+      - path: Shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.craigvg.craigs-claude-counter

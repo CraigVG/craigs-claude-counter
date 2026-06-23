@@ -35,6 +35,16 @@ struct DashboardView: View {
             .padding(24)
         }
         .frame(minWidth: 900, minHeight: 460)
+        .sheet(item: $model.activeSheet) { sheet in
+            switch sheet {
+            case .add:
+                AddAccountSheet(model: model)
+            case .relogin(let id, let label):
+                AddAccountSheet(model: model, replaceId: id, replaceLabel: label)
+            case .remove(let a):
+                RemoveSheet(model: model, account: a)
+            }
+        }
     }
 
     // MARK: header

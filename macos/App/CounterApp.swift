@@ -22,6 +22,7 @@ final class CounterModel: ObservableObject {
     @Published var lastError: String?
     @Published var loadedAt: Date?
     @Published var tick = Date()
+    @Published var activeSheet: ActiveSheet? = nil
 
     /// The local engine (the Node server). Override with CCC_BASE_URL.
     let baseURL: URL = {
@@ -58,16 +59,55 @@ final class CounterModel: ObservableObject {
         }
     }
 
-    // v1: account management runs through the web dashboard's proven login flow.
-    func openAddAccount() { NSWorkspace.shared.open(baseURL) }
-    func openReLogin(_ a: AccountDTO) { NSWorkspace.shared.open(baseURL) }
+    // Native account management — presents a sheet; the only browser step is the
+    // actual claude.ai sign-in (unavoidable: Cloudflare + the real login).
+    func openAddAccount() { activeSheet = .add }
+    func openReLogin(_ a: AccountDTO) { activeSheet = .relogin(id: a.id, label: a.name) }
+    func openRemove(_ a: AccountDTO) { activeSheet = .remove(a) }
 
-    func openRemove(_ a: AccountDTO) {
-        Task {
-            var req = URLRequest(url: baseURL.appendingPathComponent("api/accounts/\(a.id)"))
-            req.httpMethod = "DELETE"
-            _ = try? await URLSession.shared.data(for: req)
-            await load()
+    func startLogin(label: String, replaceId: String?) async -> LoginStartResp? {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/login/start"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["label": label, "replaceId": replaceId ?? NSNull()] as [String: Any])
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let out = try? JSONDecoder().decode(LoginStartResp.self, from: data) else { return nil }
+        return out
+    }
+
+    func finishLogin(loginId: String, code: String) async -> LoginFinishResp {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/login/finish"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["loginId": loginId, "pastedCode": code])
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let out = try? JSONDecoder().decode(LoginFinishResp.self, from: data) else {
+            return LoginFinishResp(ok: false, error: "network", message: "could not reach the local engine", label: nil)
+        }
+        return out
+    }
+
+    func deleteAccount(_ id: String) async {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/accounts/\(id)"))
+        req.httpMethod = "DELETE"
+        _ = try? await URLSession.shared.data(for: req)
+        await load()
+    }
+}
+
+enum ActiveSheet: Identifiable {
+    case add
+    case relogin(id: String, label: String)
+    case remove(AccountDTO)
+    var id: String {
+        switch self {
+        case .add: return "add"
+        case .relogin(let id, _): return "relogin-\(id)"
+        case .remove(let a): return "remove-\(a.id)"
         }
     }
 }
+
+struct LoginStartResp: Decodable { let loginId: String; let authorizeUrl: String }
+struct LoginFinishResp: Decodable { let ok: Bool?; let error: String?; let message: String?; let label: String? }
