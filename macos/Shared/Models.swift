@@ -39,12 +39,22 @@ struct AccountDTO: Decodable, Identifiable {
 struct UsageDTO: Decodable {
     var session: WindowDTO?
     var weekly: WindowDTO?
-    var weeklyOpus: WindowDTO?
-    var weeklySonnet: WindowDTO?
+    // Per-model weekly sub-limits, in the order the API reports them. The set of
+    // models is not fixed (was Opus/Sonnet, now Fable), so we render whatever
+    // the engine surfaces rather than hardcoding names.
+    var weeklyModels: [ModelLimitDTO]?
     var overage: OverageDTO?
 }
 
 struct WindowDTO: Decodable {
+    var pct: Double?
+    var resetsAt: String?
+    var severity: String?
+    var active: Bool?
+}
+
+struct ModelLimitDTO: Decodable {
+    var name: String
     var pct: Double?
     var resetsAt: String?
     var severity: String?

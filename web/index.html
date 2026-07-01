@@ -313,8 +313,9 @@ function modelCell(u){
   const lbl = `<span class="clabel">Model &middot; wk</span>`;
   if(!u) return `<div class="models">${lbl}<span class="none">&mdash;</span></div>`;
   const parts = [];
-  for(const [name, w] of [['Opus', u.weeklyOpus], ['Sonnet', u.weeklySonnet]]){
-    if(w && w.pct != null) parts.push(`<div class="mrow"><span class="ml">${name}</span><span class="mv ${sevCls(sevOf(w.pct))}">${w.pct}%</span></div>`);
+  const models = u.weeklyModels || [];
+  for(const m of models){
+    if(m && m.pct != null) parts.push(`<div class="mrow"><span class="ml">${esc(m.name)}</span><span class="mv ${sevCls(sevOf(m.pct))}">${m.pct}%</span></div>`);
   }
   return `<div class="models">${lbl}${parts.length ? parts.join('') : '<span class="none">&mdash;</span>'}</div>`;
 }
@@ -453,12 +454,13 @@ function demoData(){
   const now = Date.now();
   const at = (mins) => new Date(now + mins*60000).toISOString();
   const win = (pct, mins) => ({ pct, resetsAt: pct>0 ? at(mins) : null, severity: 'normal' });
+  const mdl = (name, pct, mins) => ({ name, pct, resetsAt: pct>0 ? at(mins) : null, severity: 'normal' });
   return { generatedAt: new Date(now).toISOString(), accounts: [
-    { id:'d1', label:'ops@example.com',    tier:'Max 20x', usage:{ session:win(100,52), weekly:win(61,3300), weeklySonnet:win(22,3300), overage:null } },
-    { id:'d2', label:'team@acme.dev',      tier:'Max 5x',  usage:{ session:win(78,128), weekly:win(44,5400), weeklySonnet:win(30,5400), overage:null } },
-    { id:'d3', label:'you@example.com',    tier:'Max 20x', usage:{ session:win(22,176), weekly:win(38,3180), weeklyOpus:win(12,3180), weeklySonnet:win(8,3180), overage:{enabled:true, usedUsd:128.40, limitUsd:1000, pct:13} } },
+    { id:'d1', label:'ops@example.com',    tier:'Max 20x', usage:{ session:win(100,52), weekly:win(61,3300), weeklyModels:[mdl('Fable',22,3300)], overage:null } },
+    { id:'d2', label:'team@acme.dev',      tier:'Max 5x',  usage:{ session:win(78,128), weekly:win(44,5400), weeklyModels:[mdl('Fable',30,5400)], overage:null } },
+    { id:'d3', label:'you@example.com',    tier:'Max 20x', usage:{ session:win(22,176), weekly:win(38,3180), weeklyModels:[mdl('Fable',12,3180)], overage:{enabled:true, usedUsd:128.40, limitUsd:1000, pct:13} } },
     { id:'d4', label:'legacy@example.org', tier:'Pro',     error:'needs_relogin' },
-    { id:'d5', label:'personal@gmail.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:win(0,0), overage:null } },
+    { id:'d5', label:'personal@gmail.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:win(0,0), weeklyModels:[mdl('Fable',0,0)], overage:null } },
   ] };
 }
 

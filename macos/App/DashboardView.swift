@@ -322,8 +322,9 @@ struct ModelCell: View {
     }
     private func models() -> [(String, Double)] {
         var out: [(String, Double)] = []
-        if let p = usage?.weeklyOpus?.pct { out.append(("OPUS", p)) }
-        if let p = usage?.weeklySonnet?.pct { out.append(("SONNET", p)) }
+        for m in usage?.weeklyModels ?? [] {
+            if let p = m.pct { out.append((m.name.uppercased(), p)) }
+        }
         return out
     }
 }

@@ -241,6 +241,6 @@ test('GET / serves the dashboard html', async () => {
     const r = await fetch(base + '/');
     assert.equal(r.status, 200);
     const html = await r.text();
-    assert.match(html, /Claude.+Code Usage/);
+    assert.match(html, /Craig's Claude Counter/);
   } finally { await close(); }
 });

@@ -30,6 +30,31 @@ test('normalizeUsage extracts per-model weekly sub-limits', () => {
   const u = normalizeUsage(SAMPLE);
   assert.equal(u.weeklyOpus, null);
   assert.equal(u.weeklySonnet.pct, 14);
+  // Dynamic array mirrors the scoped models the API reports, in order.
+  assert.deepEqual(u.weeklyModels.map((m) => m.name), ['Sonnet']);
+  assert.equal(u.weeklyModels[0].pct, 14);
+});
+
+test('normalizeUsage surfaces new scoped models (Fable) dynamically', () => {
+  const raw = {
+    five_hour: { utilization: 5, resets_at: 'x' },
+    seven_day: { utilization: 25, resets_at: 'y' },
+    seven_day_opus: null,
+    seven_day_sonnet: null,
+    limits: [
+      { kind: 'session', group: 'session', percent: 5, severity: 'normal', resets_at: 'x', scope: null, is_active: false },
+      { kind: 'weekly_all', group: 'weekly', percent: 25, severity: 'normal', resets_at: 'y', scope: null, is_active: true },
+      { kind: 'weekly_scoped', group: 'weekly', percent: 3, severity: 'normal', resets_at: 'z', scope: { model: { id: null, display_name: 'Fable' }, surface: null }, is_active: false },
+    ],
+  };
+  const u = normalizeUsage(raw);
+  assert.equal(u.weeklyModels.length, 1);
+  assert.equal(u.weeklyModels[0].name, 'Fable');
+  assert.equal(u.weeklyModels[0].pct, 3);
+  assert.equal(u.weeklyModels[0].active, false);
+  // Legacy convenience fields stay null when neither Opus nor Sonnet is scoped.
+  assert.equal(u.weeklyOpus, null);
+  assert.equal(u.weeklySonnet, null);
 });
 
 test('normalizeUsage prefers spend (dollars) for overage', () => {

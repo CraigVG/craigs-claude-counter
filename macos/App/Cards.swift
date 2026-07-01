@@ -8,7 +8,7 @@ struct AccountCard: View {
     var onRemove: () -> Void
 
     private var hasExtras: Bool {
-        (a.usage?.weeklyOpus != nil) || (a.usage?.weeklySonnet != nil) || (a.usage?.overage?.enabled == true)
+        !(a.usage?.weeklyModels?.isEmpty ?? true) || (a.usage?.overage?.enabled == true)
     }
 
     var body: some View {

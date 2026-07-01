@@ -184,16 +184,19 @@ enum CCCSample {
     static func win(_ p: Double, _ mins: Double) -> WindowDTO {
         WindowDTO(pct: p, resetsAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(mins * 60)), severity: nil, active: nil)
     }
+    static func mdl(_ name: String, _ p: Double, _ mins: Double) -> ModelLimitDTO {
+        ModelLimitDTO(name: name, pct: p, resetsAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(mins * 60)), severity: nil, active: nil)
+    }
     static var accounts: [AccountDTO] {
         [
             AccountDTO(id: "s1", label: "ops@example.com", tier: "Max 20x",
-                       usage: UsageDTO(session: win(100, 52), weekly: win(61, 3300), weeklyOpus: nil, weeklySonnet: win(22, 3300), overage: nil),
+                       usage: UsageDTO(session: win(100, 52), weekly: win(61, 3300), weeklyModels: [mdl("Fable", 22, 3300)], overage: nil),
                        error: nil, message: nil, stale: nil, status: nil),
             AccountDTO(id: "s2", label: "team@acme.dev", tier: "Max 5x",
-                       usage: UsageDTO(session: win(78, 120), weekly: win(44, 5400), weeklyOpus: nil, weeklySonnet: nil, overage: nil),
+                       usage: UsageDTO(session: win(78, 120), weekly: win(44, 5400), weeklyModels: nil, overage: nil),
                        error: nil, message: nil, stale: nil, status: nil),
             AccountDTO(id: "s3", label: "you@example.com", tier: "Max 20x",
-                       usage: UsageDTO(session: win(22, 170), weekly: win(38, 3180), weeklyOpus: nil, weeklySonnet: nil, overage: nil),
+                       usage: UsageDTO(session: win(22, 170), weekly: win(38, 3180), weeklyModels: nil, overage: nil),
                        error: nil, message: nil, stale: nil, status: nil),
         ]
     }

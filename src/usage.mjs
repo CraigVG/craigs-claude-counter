@@ -57,6 +57,35 @@ function windowFrom(raw, { limitKind, legacyKey, modelName }, thresholds) {
   return null;
 }
 
+// Collect every per-model weekly sub-limit the API reports, in payload order.
+// The set of models is not fixed — it has been Opus/Sonnet, and is now Fable —
+// so we surface whatever `weekly` limits carry a model scope rather than
+// hardcoding names. Falls back to the legacy seven_day_* fields when the
+// structured limits[] array is absent.
+function weeklyModelsFrom(raw, thresholds) {
+  const limits = Array.isArray(raw?.limits) ? raw.limits : [];
+  const models = [];
+  for (const l of limits) {
+    const name = l?.scope?.model?.display_name;
+    if (l.group === 'weekly' && name) {
+      models.push({
+        name,
+        pct: round(l.percent),
+        resetsAt: l.resets_at ?? null,
+        severity: l.severity ?? severityFor(l.percent, thresholds.warnPct, thresholds.critPct),
+        active: l.is_active ?? null,
+      });
+    }
+  }
+  if (models.length === 0) {
+    for (const [name, legacyKey] of [['Opus', 'seven_day_opus'], ['Sonnet', 'seven_day_sonnet']]) {
+      const w = windowFrom(raw, { modelName: name, legacyKey }, thresholds);
+      if (w) models.push({ name, ...w });
+    }
+  }
+  return models;
+}
+
 // Turn the raw /api/oauth/usage JSON into a stable, UI-friendly shape.
 export function normalizeUsage(raw, thresholds = { warnPct: 70, critPct: 90 }) {
   const session = windowFrom(
@@ -69,16 +98,12 @@ export function normalizeUsage(raw, thresholds = { warnPct: 70, critPct: 90 }) {
     { limitKind: 'weekly_all', legacyKey: 'seven_day' },
     thresholds,
   );
-  const weeklyOpus = windowFrom(
-    raw,
-    { modelName: 'Opus', legacyKey: 'seven_day_opus' },
-    thresholds,
-  );
-  const weeklySonnet = windowFrom(
-    raw,
-    { modelName: 'Sonnet', legacyKey: 'seven_day_sonnet' },
-    thresholds,
-  );
+  const weeklyModels = weeklyModelsFrom(raw, thresholds);
+  // Backward-compat convenience fields for the released v1.0.0 macOS binary,
+  // which decodes weeklyOpus / weeklySonnet by name. New clients read weeklyModels.
+  const byName = (n) => weeklyModels.find((m) => m.name === n) || null;
+  const weeklyOpus = byName('Opus');
+  const weeklySonnet = byName('Sonnet');
 
   let overage = null;
   const spend = raw?.spend;
@@ -104,7 +129,7 @@ export function normalizeUsage(raw, thresholds = { warnPct: 70, critPct: 90 }) {
     };
   }
 
-  return { session, weekly, weeklyOpus, weeklySonnet, overage };
+  return { session, weekly, weeklyModels, weeklyOpus, weeklySonnet, overage };
 }
 
 // Fetch live usage for one access token. `fetchImpl` is injectable for tests.
