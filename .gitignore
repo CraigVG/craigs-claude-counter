@@ -4,3 +4,6 @@ node_modules/
 .env
 .env.local
 logs/
+
+# usage history (JSONL data written by the server poller)
+history/

@@ -7,6 +7,7 @@ import { loadConfig, REFRESH_SKEW_MS } from './config.mjs';
 import { createCredStore, newAccountId } from './credstore.mjs';
 import * as oauthLib from './oauth.mjs';
 import * as usageLib from './usage.mjs';
+import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv } from './history.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(__dirname, '..', 'web');
@@ -167,7 +168,7 @@ function readBody(req) {
   });
 }
 
-// deps: { config, credstore, oauth, usage, logins(Map) }
+// deps: { config, credstore, oauth, usage, logins(Map), history }
 export function createServer(deps = {}) {
   const config = deps.config || loadConfig();
   const credstore = deps.credstore || createCredStore(config.keychainService);
@@ -177,6 +178,28 @@ export function createServer(deps = {}) {
   const usageCache = deps.usageCache || new Map(); // accountId -> {usage, fetchedAt}
   const refreshLocks = deps.refreshLocks || new Map(); // accountId -> in-flight refresh promise
   const thresholds = { warnPct: config.warnPct, critPct: config.critPct };
+  // Usage history store (null when no dir is configured, e.g. in tests).
+  const history = deps.history !== undefined ? deps.history
+    : (config.historyDir ? createHistory({ dir: config.historyDir, retentionDays: config.historyRetentionDays, log: (m) => console.log(`[history] ${m}`) }) : null);
+
+  // The same aggregate GET /api/usage returns; also what the history poller logs.
+  const collectUsage = async () => {
+    const accounts = await credstore.listAccounts();
+    const results = await Promise.all(
+      accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
+    );
+    return { generatedAt: new Date().toISOString(), thresholds, accounts: results };
+  };
+
+  // Shared query parsing for the history routes.
+  const historyQuery = (url) => {
+    const now = Date.now();
+    const q = url.searchParams;
+    const since = parseTime(q.get('since') || '24h', now);
+    const until = parseTime(q.get('until'), now) ?? now;
+    if (since == null) return { error: 'bad since (use 24h, 7d, or an ISO time)' };
+    return { account: q.get('account') || null, since, until, step: parseStep(q.get('step')), limit: q.has('limit') ? Number(q.get('limit')) : 5000, now };
+  };
 
   const handler = async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -189,14 +212,44 @@ export function createServer(deps = {}) {
       }
 
       if (req.method === 'GET' && path === '/api/usage') {
-        const accounts = await credstore.listAccounts();
-        const results = await Promise.all(
-          accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
-        );
+        return sendJson(res, 200, await collectUsage());
+      }
+
+      // Usage history (written by the background poller). Filters: account
+      // (id or label substring), since/until (24h, 7d, ISO), step (downsample:
+      // one sample per account per bucket, e.g. 1h), limit (most recent N).
+      // format=json (default) | jsonl | csv.
+      if (req.method === 'GET' && path === '/api/history') {
+        if (!history) return sendJson(res, 404, { error: 'history disabled' });
+        const q = historyQuery(url);
+        if (q.error) return sendJson(res, 400, { error: q.error });
+        const records = await history.query(q);
+        const format = url.searchParams.get('format') || 'json';
+        if (format === 'jsonl') {
+          res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store' });
+          return res.end(records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''));
+        }
+        if (format === 'csv') {
+          res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store' });
+          return res.end(toCsv(records));
+        }
         return sendJson(res, 200, {
-          generatedAt: new Date().toISOString(),
-          thresholds,
-          accounts: results,
+          since: new Date(q.since).toISOString(), until: new Date(q.until).toISOString(),
+          step: url.searchParams.get('step') || null, count: records.length, dir: history.dir, records,
+        });
+      }
+
+      // Per-account statistics over the same window: samples, min/max/avg/latest
+      // for session + weekly, per-model, overage delta, time spent at limit.
+      if (req.method === 'GET' && path === '/api/history/summary') {
+        if (!history) return sendJson(res, 404, { error: 'history disabled' });
+        const q = historyQuery(url);
+        if (q.error) return sendJson(res, 400, { error: q.error });
+        const records = await history.query({ ...q, limit: 0 });
+        return sendJson(res, 200, {
+          since: new Date(q.since).toISOString(), until: new Date(q.until).toISOString(),
+          samples: records.length, intervalMs: config.historyIntervalMs ?? null, thresholds,
+          accounts: summarize(records, thresholds),
         });
       }
 
@@ -270,13 +323,13 @@ export function createServer(deps = {}) {
   };
 
   const server = http.createServer(handler);
-  return { server, handler, config, credstore, logins, refreshLocks };
+  return { server, handler, config, credstore, logins, refreshLocks, history, collectUsage };
 }
 
 // Entry point when run directly.
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-  const { server, handler, config, credstore, refreshLocks } = createServer();
+  const { server, handler, config, credstore, refreshLocks, history, collectUsage } = createServer();
   server.listen(config.port, config.bindHost, () => {
     console.log(`Craig's Claude Counter listening on http://${config.bindHost}:${config.port}`);
   });
@@ -295,4 +348,15 @@ if (isMain) {
     refreshWithinMs: config.bgRefreshWithinMs,
     log: (m) => console.log(`[keepalive] ${m}`),
   });
+  // Log every account's limits on an interval so there is a record over time
+  // even when no dashboard is open (see src/history.mjs, GET /api/history).
+  if (history && config.historyIntervalMs > 0) {
+    startUsagePoller({
+      collect: collectUsage,
+      history,
+      intervalMs: config.historyIntervalMs,
+      log: (m) => console.log(`[history] ${m}`),
+    });
+    console.log(`[history] logging every ${Math.round(config.historyIntervalMs / 1000)}s to ${history.dir} (keep ${config.historyRetentionDays}d)`);
+  }
 }

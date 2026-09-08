@@ -2,6 +2,10 @@
 // No secrets live here — account tokens are stored in the macOS Keychain.
 
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+// Default usage-history directory: <repo>/history (gitignored data).
+export const DEFAULT_HISTORY_DIR = fileURLToPath(new URL('../history', import.meta.url));
 
 // OAuth constants for the Claude Code public client, extracted from the
 // Claude Code CLI bundle (2.1.181). These are the same values the official
@@ -79,6 +83,13 @@ export function loadConfig(env = process.env) {
     // so accounts stay logged in even if the dashboard is never opened.
     bgRefreshIntervalMs: Number(env.CLAUDE_USAGE_BG_INTERVAL_MS || 30 * 60_000),
     bgRefreshWithinMs: Number(env.CLAUDE_USAGE_BG_WITHIN_MS || 60 * 60_000),
+    // Usage history: the server polls every account on this interval and
+    // appends one JSONL record per account to `historyDir`, regardless of
+    // whether any dashboard is open. Day files older than `historyRetentionDays`
+    // are pruned. Set CLAUDE_USAGE_HISTORY_MS=0 to disable logging.
+    historyDir: env.CLAUDE_USAGE_HISTORY_DIR || DEFAULT_HISTORY_DIR,
+    historyIntervalMs: Number(env.CLAUDE_USAGE_HISTORY_MS ?? 5 * 60_000),
+    historyRetentionDays: Number(env.CLAUDE_USAGE_HISTORY_DAYS ?? 90),
     // Severity thresholds (percent utilization) for the UI bars.
     warnPct: Number(env.CLAUDE_USAGE_WARN || 70),
     critPct: Number(env.CLAUDE_USAGE_CRIT || 90),

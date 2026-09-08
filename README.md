@@ -64,6 +64,32 @@ All optional (sensible defaults; nothing required):
 | `CLAUDE_USAGE_BIND` | auto (Tailscale IP, else `127.0.0.1`) | Bind host |
 | `CLAUDE_USAGE_CACHE_MS` | `60000` | Min interval between upstream fetches per account |
 | `CLAUDE_USAGE_WARN` / `_CRIT` | `70` / `90` | Severity thresholds (%) |
+| `CLAUDE_USAGE_HISTORY_MS` | `300000` (5 min) | How often the engine logs every account's limits to the history (`0` disables) |
+| `CLAUDE_USAGE_HISTORY_DIR` | `<repo>/history` | Where the history JSONL files live |
+| `CLAUDE_USAGE_HISTORY_DAYS` | `90` | Days of history to keep before day files are pruned |
+
+## Usage history (for agents and trend questions)
+
+The engine polls every account on its own timer (default every 5 minutes, dashboard open or not) and appends one record per account to `history/usage-YYYY-MM-DD.jsonl` (UTC day files, 90 days kept). Only labels, tiers, percentages, reset times and overage dollars are logged, never tokens.
+
+One record looks like:
+
+```json
+{"ts":"2026-09-08T18:40:00.000Z","account":"acct_…","label":"craig@drillerdb.com","tier":"Max 20x",
+ "session":{"pct":0,"resetsAt":null},"weekly":{"pct":100,"resetsAt":"2026-09-11T05:00:00Z"},
+ "models":[{"name":"Fable","pct":48,"resetsAt":"2026-09-11T05:00:00Z"}],
+ "overage":{"usedUsd":600.92,"limitUsd":615,"pct":98},"stale":false,"error":null}
+```
+
+Read it back from the running engine:
+
+| Call | What you get |
+|---|---|
+| `GET /api/history?since=7d` | Raw records, oldest first. Filters: `account=<id or label substring>`, `since`/`until` (`24h`, `7d`, ISO time), `step=1h` (one sample per account per hour), `limit=N` (most recent N, default 5000, `0` for all), `format=json\|jsonl\|csv` |
+| `GET /api/history/summary?since=7d` | Per account: samples, first/last, session and weekly `latest/min/max/avg`, weekly reset count, per-model stats, overage delta in the window, samples at limit / warning / stale / errored |
+| `bin/claude-usage history --since 7d` | The summary as a terminal table with sparklines (`--account x`, `--json`, `--raw --step 1h` for JSONL) |
+
+Or read the files directly, for example `jq 'select(.label=="info team") | [.ts,.weekly.pct]' history/usage-2026-09-08.jsonl`. Weekly percentages drop to zero at each reset, so read a weekly trend alongside the reset count.
 
 ## Development
 

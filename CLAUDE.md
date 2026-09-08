@@ -9,8 +9,9 @@ Personal tool: a tailnet-private dashboard that aggregates Claude Code **session
 - `src/oauth.mjs` — PKCE login + token refresh (Claude Code public OAuth client)
 - `src/usage.mjs` — fetch/normalize `GET /api/oauth/usage`; fetch profile for labels
 - `src/server.mjs` — `node:http` server + JSON API; `ensureFresh` refresh-on-demand
+- `src/history.mjs` — usage history: JSONL day files in `history/`, background poller (`startUsagePoller`), `query`/`summarize`; served at `GET /api/history` and `/api/history/summary`
 - `web/index.html` — self-contained dashboard (vanilla JS/CSS)
-- `bin/claude-usage` — CLI table from the running server
+- `bin/claude-usage` — CLI table from the running server; `claude-usage history --since 7d` for trends
 
 ## Key facts
 
@@ -18,6 +19,9 @@ Personal tool: a tailnet-private dashboard that aggregates Claude Code **session
 - OAuth (from Claude Code CLI bundle): client_id `9d1c250a-e61b-44d9-88ed-5944d1962f5e`, authorize `https://claude.ai/oauth/authorize`, token `https://platform.claude.com/v1/oauth/token`, redirect `https://platform.claude.com/oauth/code/callback` (manual code paste, `code#state`), PKCE S256.
 - Tokens live ONLY in macOS Keychain (service `claude-usage-dashboard`). Never log or write them to disk.
 - Profile endpoint `GET /api/oauth/profile` gives `account.email` + `organization.rate_limit_tier` (→ pretty tier).
+
+- History records hold labels, tiers and percentages only. Never log tokens there.
+- The poller runs from the server entry point on `CLAUDE_USAGE_HISTORY_MS` (default 5 min); tests drive `poller.tick()` directly with a temp dir.
 
 ## Testing
 

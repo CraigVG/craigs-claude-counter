@@ -1,9 +1,15 @@
 #!/usr/bin/env node
-// Quick CLI glance: print a one-line-per-account usage table from the running
-// dashboard server (no auth, localhost only). Falls back with a clear message.
+// Quick CLI glance at the running dashboard server (no auth, localhost only).
+//
+//   claude-usage                       one-line-per-account usage table (now)
+//   claude-usage history [opts]        per-account trend from the history log
+//       --since 24h|7d|ISO   window start (default 24h)   --until ISO
+//       --account <id|label> one account (label substring ok)
+//       --json               print the /api/history/summary payload instead
+//       --raw [--step 1h]    print raw records as JSONL (optionally downsampled)
 const port = process.env.CLAUDE_USAGE_PORT || 4319;
 const host = process.env.CLAUDE_USAGE_BIND || '127.0.0.1';
-const url = `http://${host}:${port}/api/usage`;
+const base = `http://${host}:${port}`;
 
 function bar(pct) {
   if (pct == null) return '—'.padEnd(10);
@@ -17,11 +23,33 @@ function reset(iso) {
   const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return d > 0 ? `${d}d${h}h` : h > 0 ? `${h}h${m}m` : `${m}m`;
 }
+// Sparkline of up to `width` points, sampled evenly from the series.
+function spark(values, width = 24) {
+  const xs = values.filter((v) => v != null);
+  if (!xs.length) return '';
+  const pick = xs.length <= width ? xs : Array.from({ length: width }, (_, i) => xs[Math.floor((i * xs.length) / width)]);
+  const glyphs = '▁▂▃▄▅▆▇█';
+  return pick.map((v) => glyphs[Math.min(7, Math.floor((Math.max(0, Math.min(100, v)) / 100) * 7.99))]).join('');
+}
+function args(argv) {
+  const out = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) { const k = a.slice(2); const v = argv[i + 1]; if (v && !v.startsWith('--')) { out[k] = v; i++; } else out[k] = true; }
+    else out._.push(a);
+  }
+  return out;
+}
+function fail(e) {
+  console.error(`Could not reach the dashboard at ${base}${e && e.message ? ` (${e.message})` : ''}`);
+  console.error('Is the server running?  cd ~/craigs-claude-counter && npm start');
+  process.exit(1);
+}
 
-try {
-  const res = await fetch(url);
+async function showNow() {
+  const res = await fetch(base + '/api/usage');
   const data = await res.json();
-  if (!data.accounts?.length) { console.log('No accounts yet. Open the dashboard and add one.'); process.exit(0); }
+  if (!data.accounts?.length) { console.log('No accounts yet. Open the dashboard and add one.'); return; }
   console.log(`Claude Code usage  (${new Date(data.generatedAt).toLocaleTimeString()})\n`);
   for (const a of data.accounts) {
     const label = (a.label || a.id).padEnd(26).slice(0, 26);
@@ -34,8 +62,55 @@ try {
     if (a.usage.overage?.enabled) console.log(`   overage  $${a.usage.overage.usedUsd.toFixed(2)} / $${a.usage.overage.limitUsd.toFixed(2)} (${a.usage.overage.pct}%)`);
     console.log('');
   }
-} catch (e) {
-  console.error(`Could not reach the dashboard at ${url}`);
-  console.error('Is the server running?  cd ~/claude-usage-dashboard && npm start');
-  process.exit(1);
 }
+
+async function showHistory(opt) {
+  const q = new URLSearchParams();
+  q.set('since', opt.since || '24h');
+  if (opt.until) q.set('until', opt.until);
+  if (opt.account) q.set('account', opt.account);
+  if (opt.raw) {
+    if (opt.step) q.set('step', opt.step);
+    q.set('format', 'jsonl'); q.set('limit', opt.limit || '0');
+    const res = await fetch(`${base}/api/history?${q}`);
+    if (!res.ok) { console.error(await res.text()); process.exit(1); }
+    process.stdout.write(await res.text());
+    return;
+  }
+  const [sumRes, recRes] = await Promise.all([
+    fetch(`${base}/api/history/summary?${q}`),
+    fetch(`${base}/api/history?${q}&limit=0&step=${opt.step || ''}`),
+  ]);
+  if (sumRes.status === 404) { console.log('History is disabled on the server (CLAUDE_USAGE_HISTORY_MS=0).'); return; }
+  if (!sumRes.ok) { console.error(await sumRes.text()); process.exit(1); }
+  const summary = await sumRes.json();
+  if (opt.json) { console.log(JSON.stringify(summary, null, 2)); return; }
+  const recs = recRes.ok ? (await recRes.json()).records : [];
+  if (!summary.accounts.length) { console.log(`No history between ${summary.since} and ${summary.until}. The server logs every ${Math.round((summary.intervalMs || 0) / 60000)} min once it is running.`); return; }
+  console.log(`Claude Code usage history  ${summary.since.slice(0, 16)}Z → ${summary.until.slice(0, 16)}Z  (${summary.samples} samples, every ${Math.round((summary.intervalMs || 0) / 60000)} min)\n`);
+  const pct = (v) => (v == null ? '  —' : String(Math.round(v)).padStart(3) + '%');
+  for (const a of summary.accounts.sort((x, y) => (y.weekly?.latest ?? 0) - (x.weekly?.latest ?? 0))) {
+    const mine = recs.filter((r) => r.account === a.account);
+    console.log(`${a.label}  ${a.tier || ''}  (${a.samples} samples${a.errorSamples ? `, ${a.errorSamples} errors` : ''}${a.staleSamples ? `, ${a.staleSamples} stale` : ''})`);
+    const line = (name, st, key, resets) => {
+      if (!st) { console.log(`   ${name.padEnd(8)} no data`); return; }
+      console.log(`   ${name.padEnd(8)} ${spark(mine.map((r) => r[key]?.pct ?? null)).padEnd(24)}  now ${pct(st.latest)}  min ${pct(st.min)}  max ${pct(st.max)}  avg ${pct(st.avg)}${resets ? `  ${resets} reset${resets === 1 ? '' : 's'}` : ''}`);
+    };
+    line('session', a.session, 'session', a.resets?.session);
+    line('weekly', a.weekly, 'weekly', a.resets?.weekly);
+    for (const [name, st] of Object.entries(a.models || {})) {
+      if (st) console.log(`   ${name.toLowerCase().padEnd(8)} ${''.padEnd(24)}  now ${pct(st.latest)}  min ${pct(st.min)}  max ${pct(st.max)}  avg ${pct(st.avg)}`);
+    }
+    if (a.overage) console.log(`   overage  $${a.overage.latestUsedUsd.toFixed(2)} of $${a.overage.limitUsd.toFixed(0)}  (${a.overage.deltaUsd >= 0 ? '+' : ''}$${a.overage.deltaUsd.toFixed(2)} in window)`);
+    if (a.atLimitSamples) console.log(`   at limit ${a.atLimitSamples} of ${a.samples} samples (${Math.round((100 * a.atLimitSamples) / a.samples)}% of the window)`);
+    if (a.latestError) console.log(`   latest   ${a.latestError}`);
+    console.log('');
+  }
+}
+
+const opt = args(process.argv.slice(2));
+try {
+  if (opt._[0] === 'history') await showHistory(opt);
+  else if (opt._[0] && opt._[0] !== 'now') { console.error(`unknown command: ${opt._[0]} (try: claude-usage, claude-usage history --since 7d)`); process.exit(2); }
+  else await showNow();
+} catch (e) { fail(e); }

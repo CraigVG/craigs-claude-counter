@@ -244,3 +244,58 @@ test('GET / serves the dashboard html', async () => {
     assert.match(html, /Craig's Claude Counter/);
   } finally { await close(); }
 });
+
+test('/api/history and /api/history/summary serve what the poller logged', async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createHistory, startUsagePoller } = await import('../src/history.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'ccc-server-history-'));
+  const history = createHistory({ dir });
+  const credstore = memStore([
+    { id: 'ok', label: 'ok@x', tier: 'Max 20x', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 },
+    { id: 'dead', label: 'dead@x', accessToken: 'AT2', expiresAt: 0 }, // no refresh token -> needs_relogin
+  ]);
+  const usage = { fetchUsage: async () => ({ ...goodUsage, weeklyModels: [{ name: 'Fable', pct: 12 }], overage: { enabled: true, usedUsd: 3, limitUsd: 10, pct: 30 } }) };
+  const oauth = { refresh: async () => { throw new Error('no'); } };
+  const { server, collectUsage } = createServer({ config: { ...baseConfig, historyIntervalMs: 300_000 }, credstore, usage, oauth, history });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const poller = startUsagePoller({ collect: collectUsage, history, intervalMs: 60_000 });
+  try {
+    await poller.tick();
+    const r = await (await fetch(base + '/api/history?since=1h')).json();
+    assert.ok(r.count >= 2);
+    assert.equal(r.dir, dir);
+    const ok = r.records.filter((x) => x.account === 'ok').pop();
+    assert.equal(ok.weekly.pct, 60);
+    assert.deepEqual(ok.models, [{ name: 'Fable', pct: 12, resetsAt: null }]);
+    assert.equal(r.records.find((x) => x.account === 'dead').error, 'needs_relogin');
+
+    const byLabel = await (await fetch(base + '/api/history?account=dead@x&format=jsonl')).text();
+    assert.ok(byLabel.trim().split('\n').every((l) => JSON.parse(l).account === 'dead'));
+    const csv = await (await fetch(base + '/api/history?format=csv')).text();
+    assert.ok(csv.startsWith('ts,account,label'));
+
+    const s = await (await fetch(base + '/api/history/summary?since=1h')).json();
+    assert.equal(s.intervalMs, 300_000);
+    const sok = s.accounts.find((a) => a.account === 'ok');
+    assert.equal(sok.weekly.latest, 60);
+    assert.equal(sok.overage.limitUsd, 10);
+    assert.equal(s.accounts.find((a) => a.account === 'dead').latestError, 'needs_relogin');
+
+    const bad = await fetch(base + '/api/history?since=yesterday');
+    assert.equal(bad.status, 400);
+  } finally {
+    poller.stop();
+    await new Promise((r) => server.close(r));
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('/api/history is 404 when history is disabled', async () => {
+  const { base, close } = await boot({ credstore: memStore(), usage: {}, oauth: {}, history: null });
+  try {
+    assert.equal((await fetch(base + '/api/history')).status, 404);
+  } finally { await close(); }
+});
