@@ -11,8 +11,8 @@
 # Note: the app reads usage from the local engine (the Node server in this repo).
 # Run it with `npm start` / the LaunchAgent so the app + widget show live data.
 cask "craigs-claude-counter" do
-  version "1.1.0"
-  sha256 "bab23e9d13af879c611c556eba021da7e30ed8c08ada4116d780fa9477cecca7"
+  version "1.2.0"
+  sha256 "42c202ac5ea5104c5615a98b5ac43e29f31e3f9902a26afe6f8d131ed6246acc"
 
   url "https://github.com/CraigVG/craigs-claude-counter/releases/download/v#{version}/CraigsClaudeCounter.dmg"
   name "Craig's Claude Counter"
