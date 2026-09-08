@@ -44,6 +44,8 @@
   .btn:hover { background: var(--row-hover); color: var(--ink); border-color: #2c333d; }
   .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .btn .ic { color: var(--ink-3); margin-right: 5px; }
+  .btn.active { color: var(--accent); border-color: rgba(124,147,179,0.55); background: rgba(124,147,179,0.10); }
+  .btn.active .ic { color: var(--accent); }
 
   /* Summary strip */
   .summary { display: flex; align-items: center; gap: 18px; background: var(--panel); border: 1px solid var(--hair); border-left: 3px solid var(--hair); border-radius: var(--radius); padding: 15px 20px; margin-bottom: 22px; }
@@ -90,7 +92,7 @@
   .acct .email { font-size: 14px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row.idle .acct .email { color: var(--ink-2); }
   .acct .tags { display: flex; gap: 7px; align-items: center; }
-  .tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--hair); color: var(--ink-3); }
+  .tag { white-space: nowrap; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--hair); color: var(--ink-3); }
   .tag.cached { color: var(--warn); border-color: rgba(217,162,58,0.45); }
   .tag.relogin { color: var(--alarm); border-color: var(--alarm-edge); }
 
@@ -124,7 +126,7 @@
   .overage .none { font-family: var(--mono); font-size: 11.5px; color: var(--ink-4); letter-spacing: 0.02em; }
 
   .actions-cell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-  .rowbtn { font-family: var(--ui); font-size: 11.5px; cursor: pointer; border-radius: 7px; padding: 5px 9px; border: 1px solid var(--hair); background: transparent; color: var(--ink-3); transition: opacity .12s ease, color .12s, border-color .12s, background .12s; }
+  .rowbtn { white-space: nowrap; font-family: var(--ui); font-size: 11.5px; cursor: pointer; border-radius: 7px; padding: 5px 9px; border: 1px solid var(--hair); background: transparent; color: var(--ink-3); transition: opacity .12s ease, color .12s, border-color .12s, background .12s; }
   .rowbtn.del { opacity: 0; border-color: transparent; font-size: 13px; padding: 4px 8px; line-height: 1; }
   .row:hover .rowbtn.del { opacity: 1; }
   .rowbtn.del:hover { color: var(--alarm); border-color: var(--alarm-edge); background: var(--alarm-bg); }
@@ -171,6 +173,40 @@
   /* cell labels — hidden in the table, shown when the board reflows to cards */
   .clabel { display: none; }
 
+  /* Compact density: every cell on one line (~38px rows instead of ~118px) so
+     many accounts fit without scrolling. Auto-enabled when the comfortable
+     board would overflow the viewport; toggled with the Compact button. */
+  @media (min-width: 761px) {
+    body.compact { padding: 22px 26px 30px; }
+    body.compact .topbar { margin-bottom: 14px; }
+    body.compact .summary { padding: 9px 16px; margin-bottom: 14px; gap: 14px; }
+    body.compact .summary .sig { font-size: 10px; padding: 3px 8px; }
+    body.compact .summary .line { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.compact .grid { grid-template-columns: 14px minmax(170px,1.2fr) 96px minmax(214px,1.4fr) minmax(214px,1.4fr) minmax(118px,0.8fr) minmax(156px,0.9fr) 92px; min-width: 1080px; }
+    body.compact .head > div { padding: 8px 14px; }
+    body.compact .row > div { padding: 6px 14px; }
+    body.compact .tick > span { height: 22px; }
+    body.compact .acct { flex-direction: row; align-items: center; gap: 8px; }
+    body.compact .acct .email { font-size: 13px; }
+    body.compact .plan .pill { font-size: 11px; padding: 2px 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+    body.compact .metric { flex-direction: row; align-items: center; gap: 7px; }
+    body.compact .pct { font-size: 15px; min-width: 42px; }
+    body.compact .pct .sym { font-size: 10px; }
+    body.compact .meter { width: 48px; flex: none; }
+    body.compact .reset { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+    body.compact .models { flex-direction: row; flex-wrap: wrap; gap: 2px 10px; }
+    body.compact .mrow { gap: 4px; }
+    body.compact .mrow .ml { min-width: 0; font-size: 9.5px; }
+    body.compact .mrow .mv { font-size: 12px; }
+    body.compact .overage { flex-direction: row; align-items: center; gap: 8px; }
+    body.compact .overage .amt { font-size: 12px; white-space: nowrap; }
+    body.compact .ometer { width: 48px; flex: none; }
+    body.compact .rowbtn.del { padding: 2px 6px; }
+    body.compact .rowbtn.relogin { font-size: 11px; padding: 3px 7px; }
+    body.compact .foot { margin-top: 10px; }
+    body.compact .row, body.compact .summary { animation: none; }
+  }
+
   /* Responsive: below 760px, reflow the table into stacked per-account cards */
   @media (max-width: 760px) {
     body { padding: 22px 14px 44px; overflow-x: hidden; display: block; }
@@ -216,6 +252,7 @@
       </div>
       <div class="controls">
         <span class="freshness" id="freshness"><span class="dot" aria-hidden="true"></span><span id="updated"></span></span>
+        <button class="btn" id="density" type="button" aria-pressed="false" style="display:none"><span class="ic" aria-hidden="true">&#x2261;</span>Compact</button>
         <button class="btn" id="refresh" type="button"><span class="ic" aria-hidden="true">&#x21bb;</span>Refresh</button>
         <button class="btn" id="add" type="button"><span class="ic" aria-hidden="true">+</span>Add account</button>
       </div>
@@ -421,12 +458,43 @@ function render(){
   $('#foot').style.display = has ? 'flex' : 'none';
   $('#empty').style.display = has ? 'none' : 'block';
   $('#acct-count').textContent = has ? `${accounts.length} account${accounts.length===1?'':'s'}` : '';
+  $('#density').style.display = has ? '' : 'none';
   if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); buildSummary(accounts); }
   else { $('#summary').style.display = 'none'; }
   updateFreshness();
+  applyDensity();
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del, b.dataset.label));
   document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = () => addAccount(b.dataset.relogin, b.dataset.label));
 }
+
+// ---- density: comfortable (stacked cells) vs compact (one line per account) ----
+// 'auto' (default) goes compact only when the comfortable board would overflow
+// the viewport, so a long account list never forces a scroll. The Compact
+// button pins an explicit choice in localStorage.
+const DENSITY_KEY = 'ccc.density';
+let density = 'auto';
+try { density = localStorage.getItem(DENSITY_KEY) || 'auto'; } catch {}
+function applyDensity(){
+  const btn = $('#density');
+  let compact;
+  if(window.innerWidth <= 760) compact = false;            // card layout has its own density
+  else if(density === 'compact') compact = true;
+  else if(density === 'comfortable') compact = false;
+  else {
+    document.body.classList.remove('compact');
+    compact = document.documentElement.scrollHeight > window.innerHeight + 8;
+  }
+  document.body.classList.toggle('compact', compact);
+  btn.classList.toggle('active', compact);
+  btn.setAttribute('aria-pressed', String(compact));
+  btn.title = compact ? 'Switch to comfortable rows' : 'Switch to compact single-line rows';
+}
+$('#density').onclick = () => {
+  density = document.body.classList.contains('compact') ? 'comfortable' : 'compact';
+  try { localStorage.setItem(DENSITY_KEY, density); } catch {}
+  applyDensity();
+};
+window.addEventListener('resize', applyDensity);
 
 // page freshness — a throttled/frozen tab is visible, not hidden
 function updateFreshness(){
@@ -449,19 +517,33 @@ function tick(){
 
 // Demo mode (?demo): render representative fake accounts so the UI can be
 // previewed without signing in. No network, no real data.
-const DEMO = new URLSearchParams(location.search).has('demo');
+// ?demo=many adds more accounts (and a multi-model row) to exercise compact mode.
+const DEMO_MODE = new URLSearchParams(location.search).get('demo');
+const DEMO = DEMO_MODE != null;
 function demoData(){
   const now = Date.now();
   const at = (mins) => new Date(now + mins*60000).toISOString();
   const win = (pct, mins) => ({ pct, resetsAt: pct>0 ? at(mins) : null, severity: 'normal' });
   const mdl = (name, pct, mins) => ({ name, pct, resetsAt: pct>0 ? at(mins) : null, severity: 'normal' });
-  return { generatedAt: new Date(now).toISOString(), accounts: [
+  const accounts = [
     { id:'d1', label:'ops@example.com',    tier:'Max 20x', usage:{ session:win(100,52), weekly:win(61,3300), weeklyModels:[mdl('Fable',22,3300)], overage:null } },
     { id:'d2', label:'team@acme.dev',      tier:'Max 5x',  usage:{ session:win(78,128), weekly:win(44,5400), weeklyModels:[mdl('Fable',30,5400)], overage:null } },
     { id:'d3', label:'you@example.com',    tier:'Max 20x', usage:{ session:win(22,176), weekly:win(38,3180), weeklyModels:[mdl('Fable',12,3180)], overage:{enabled:true, usedUsd:128.40, limitUsd:1000, pct:13} } },
     { id:'d4', label:'legacy@example.org', tier:'Pro',     error:'needs_relogin' },
     { id:'d5', label:'personal@gmail.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:win(0,0), weeklyModels:[mdl('Fable',0,0)], overage:null } },
-  ] };
+  ];
+  if(DEMO_MODE === 'many'){
+    accounts.push(
+      { id:'d6',  label:'billing@acme.dev',     tier:'Max 5x',  stale:true, usage:{ session:win(73,131), weekly:win(45,8460), weeklyModels:[mdl('Fable',16,8460)], overage:null } },
+      { id:'d7',  label:'research team',        tier:'Max 20x', usage:{ session:win(67,271), weekly:win(42,941), weeklyModels:[mdl('Fable',20,941), mdl('Opus',55,941)], overage:{enabled:true, usedUsd:600.92, limitUsd:615, pct:98} } },
+      { id:'d8',  label:'qa@example.com',       tier:'Max 5x',  usage:{ session:win(21,64), weekly:win(50,2100), weeklyModels:[mdl('Fable',18,2100)], overage:null } },
+      { id:'d9',  label:'org workspace',        tier:'default_raven', usage:{ session:win(90,31), weekly:win(12,9600), weeklyModels:[mdl('Fable',10,9600)], overage:null } },
+      { id:'d10', label:'contractor@agency.io', tier:'Pro',     usage:{ session:win(5,290), weekly:win(9,4000), weeklyModels:[], overage:null } },
+      { id:'d11', label:'support@example.com',  tier:'Max 20x', usage:{ session:win(48,200), weekly:win(85,3000), weeklyModels:[mdl('Fable',39,3000)], overage:null } },
+      { id:'d12', label:'dev@example.com',      tier:'Max 5x',  usage:{ session:win(11,100), weekly:win(70,5000), weeklyModels:[mdl('Fable',7,5000)], overage:null } },
+    );
+  }
+  return { generatedAt: new Date(now).toISOString(), accounts };
 }
 
 async function load(){
