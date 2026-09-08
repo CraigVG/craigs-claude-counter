@@ -218,9 +218,11 @@ export function createHistory({ dir, retentionDays = 90, log = () => {} }) {
 }
 
 // Poll usage on an interval and append one record per account. `collect`
-// returns the same payload as GET /api/usage. Returns { stop, tick } so callers
-// (and tests) can drive a tick directly.
-export function startUsagePoller({ collect, history, intervalMs = 300_000, log = () => {} }) {
+// returns the same payload as GET /api/usage. The first tick waits
+// `initialDelayMs` so it does not land on top of the startup token-refresh
+// burst (which 429s the usage endpoint and would log a rate-limited sample).
+// Returns { stop, tick } so callers (and tests) can drive a tick directly.
+export function startUsagePoller({ collect, history, intervalMs = 300_000, initialDelayMs = 20_000, log = () => {} }) {
   let lastPrune = 0;
   const tick = async () => {
     const snap = await collect();
@@ -231,7 +233,8 @@ export function startUsagePoller({ collect, history, intervalMs = 300_000, log =
   };
   const safeTick = () => tick().then((n) => log(`logged ${n} account(s)`)).catch((e) => log(`tick failed: ${e.message || e}`));
   const timer = setInterval(safeTick, intervalMs);
+  const first = setTimeout(safeTick, initialDelayMs);
   if (timer.unref) timer.unref();
-  safeTick();
-  return { stop: () => clearInterval(timer), tick };
+  if (first.unref) first.unref();
+  return { stop: () => { clearInterval(timer); clearTimeout(first); }, tick };
 }

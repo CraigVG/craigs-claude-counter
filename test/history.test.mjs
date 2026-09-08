@@ -173,11 +173,11 @@ test('startUsagePoller logs one record per account on each tick', async () => {
   try {
     let calls = 0;
     const collect = async () => ({ generatedAt: iso(Date.now() + calls++), accounts: [acct(), acct({ id: 'a2', label: 'two', error: 'needs_relogin', usage: null })] });
-    const poller = startUsagePoller({ collect, history, intervalMs: 60_000 });
+    const poller = startUsagePoller({ collect, history, intervalMs: 60_000, initialDelayMs: 60_000 });
     try {
       assert.equal(await poller.tick(), 2);
       const recs = await history.query({ limit: 0 });
-      assert.ok(recs.length >= 2 && recs.length % 2 === 0); // startup tick may have landed too
+      assert.equal(recs.length, 2); // the delayed first tick has not fired
       assert.equal(recs.find((r) => r.account === 'a2').error, 'needs_relogin');
       assert.equal(recs.find((r) => r.account === 'a1').weekly.pct, 61.5);
     } finally { poller.stop(); }
