@@ -25,7 +25,9 @@ struct AccountDTO: Decodable, Identifiable {
         guard let u = usage else { return 0 }
         return max(u.session?.pct ?? 0, u.weekly?.pct ?? 0)
     }
-    // Tiered: at-limit > needs-relogin > warning > usage > idle  (matches the web app)
+    // Tiered: at-limit > needs-relogin > warning > usage > idle  (matches the web app).
+    // The app and web boards sort ascending (most available on top); the widget
+    // sorts descending because it only has room for the most-constrained few.
     var sortKey: Double {
         let w = worstPct
         var tier = 0.0

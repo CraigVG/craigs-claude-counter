@@ -35,7 +35,7 @@ struct DashboardView: View {
     @AppStorage(Density.storageKey) private var densityRaw = Density.auto.rawValue
 
     private var accounts: [AccountDTO] {
-        (model.snapshot?.accounts ?? []).sorted { $0.sortKey > $1.sortKey }
+        (model.snapshot?.accounts ?? []).sorted { $0.sortKey < $1.sortKey }   // most available on top
     }
 
     private var density: Density { Density(rawValue: densityRaw) ?? .auto }
@@ -185,7 +185,7 @@ struct DashboardView: View {
                 legendKey(Theme.warn, "warning 70–89%")
                 legendKey(Theme.alarm, "at limit ≥90%")
                 Spacer()
-                Text("sorted by constraint · most-constrained on top")
+                Text("sorted by headroom · most available on top")
             }
         }
         .font(Theme.mono(11, .regular)).foregroundColor(Theme.ink4)

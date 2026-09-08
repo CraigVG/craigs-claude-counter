@@ -42,7 +42,7 @@ The app and widget are the same Status Board rendered natively in SwiftUI; they 
 - **Session (5h)** and **Weekly** utilization — percentages with live reset countdowns
 - **Per‑model weekly sub‑limits** (Opus / Sonnet) and **overage** spend, when active
 - Auto‑detected plan tier (Max 20× / Max 5× / Pro)
-- A top summary — how many accounts need attention and the single most‑pressing fact — sorted most‑constrained first
+- A top summary — how many accounts need attention and the single most‑pressing fact. The board lists the most available account first and the most constrained last
 - **Compact mode** — one line per account so many accounts fit without scrolling. Auto‑enabled when the normal rows would overflow the window; pin it either way with the **Compact** button (⌘⇧K in the app). `?demo=many` previews it with 12 fake accounts.
 
 ## How it works (and why it's safe)

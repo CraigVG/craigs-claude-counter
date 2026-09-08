@@ -285,7 +285,7 @@
       <span class="key"><span class="swatch" style="background:var(--warn)"></span> warning 70&ndash;89%</span>
       <span class="key"><span class="swatch" style="background:var(--alarm)"></span> at limit &ge;90%</span>
       <span style="flex:1"></span>
-      <span>sorted by constraint &middot; most-constrained on top</span>
+      <span>sorted by headroom &middot; most available on top</span>
     </div>
   </div>
 
@@ -318,8 +318,9 @@ function resetText(iso){ const t = shortDur(iso); return t==='now' ? 'resettingâ
 function sevOf(pct){ if(pct == null) return 'idle'; if(pct >= 90) return 'alarm'; if(pct >= 70) return 'warn'; if(pct <= 0) return 'idle'; return 'normal'; }
 const sevCls = (sev) => sev==='alarm' ? 'is-alarm' : sev==='warn' ? 'is-warn' : sev==='idle' ? 'is-idle' : '';
 function worstPct(a){ if(!a.usage) return 0; return Math.max(a.usage.session?.pct ?? 0, a.usage.weekly?.pct ?? 0); }
-// Tiered so the most-pressing row is on top and matches the summary headline:
-// at-limit (>=90) first, then needs-relogin, then warnings, then by usage, idle last.
+// Tiered by constraint: at-limit (>=90), then needs-relogin, then warnings, then by usage, idle.
+// The board sorts ascending â€” most available on top, most constrained at the bottom;
+// the summary strip still calls out the worst one.
 function sortKey(a){
   const worst = worstPct(a);
   let tier = 0;
@@ -452,7 +453,7 @@ function buildSummary(accounts){
 
 function render(){
   if(!latest) return;
-  const accounts = [...(latest.accounts || [])].sort((a, b) => sortKey(b) - sortKey(a));
+  const accounts = [...(latest.accounts || [])].sort((a, b) => sortKey(a) - sortKey(b));
   const has = accounts.length > 0;
   $('#board').style.display = has ? 'block' : 'none';
   $('#foot').style.display = has ? 'flex' : 'none';
