@@ -357,9 +357,18 @@ if (isMain) {
   });
   // Also serve on loopback so localhost + the CLI work, without exposing the LAN.
   if (config.bindHost !== '127.0.0.1') {
-    http.createServer(handler).listen(config.port, '127.0.0.1', () => {
+    const local = http.createServer(handler);
+    local.on('error', (e) => { console.error(`loopback listen failed: ${e.message || e}`); process.exit(1); });
+    local.listen(config.port, '127.0.0.1', () => {
       console.log(`Also on http://127.0.0.1:${config.port} (local)`);
     });
+    // A bad tailnet address must not take the whole engine down: keep serving
+    // on loopback (the CLI, widget and local browser still work) and say why.
+    server.on('error', (e) => {
+      console.error(`tailnet listen on ${config.bindHost} failed (${e.code || e.message}); serving on 127.0.0.1 only`);
+    });
+  } else {
+    server.on('error', (e) => { console.error(`listen failed: ${e.message || e}`); process.exit(1); });
   }
   // Keep accounts logged in even when nobody is viewing the dashboard.
   startBackgroundRefresh({

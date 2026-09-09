@@ -37,6 +37,15 @@ export const KEYCHAIN_SERVICE = 'claude-usage-dashboard';
 // Refresh an access token when it is within this window of expiring.
 export const REFRESH_SKEW_MS = 5 * 60 * 1000;
 
+// Pick the Tailscale IPv4 out of `tailscale ip -4` output. The CLI sometimes
+// prints an error sentence on stdout instead ("The Tailscale GUI failed to
+// start: ..."), which once became the bind host and crashed the server, so
+// only a real dotted-quad counts, preferring the 100.64/10 CGNAT range.
+export function parseTailscaleIp(out) {
+  const lines = String(out || '').split('\n').map((l) => l.trim()).filter((l) => /^\d{1,3}(\.\d{1,3}){3}$/.test(l));
+  return lines.find((l) => /^100\./.test(l)) || lines[0] || null;
+}
+
 // Try to find the host's Tailscale IPv4 so the dashboard is reachable from
 // other tailnet devices but never the public internet. Falls back to loopback.
 export function detectBindHost() {
@@ -53,8 +62,7 @@ export function detectBindHost() {
         stdio: ['ignore', 'pipe', 'ignore'],
         timeout: 3000,
       });
-      const ip = out.split('\n').map((l) => l.trim()).find(Boolean);
-      if (ip && /^100\./.test(ip)) return ip; // CGNAT range used by Tailscale
+      const ip = parseTailscaleIp(out);
       if (ip) return ip;
     } catch {
       // try next candidate
