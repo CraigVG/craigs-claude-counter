@@ -6,6 +6,58 @@ import SwiftUI
 struct UsageSnapshot: Decodable {
     var generatedAt: String?
     var accounts: [AccountDTO]
+    /// Every account folded into one capacity-weighted picture (engine: src/fleet.mjs).
+    var fleet: FleetDTO?
+}
+
+// MARK: - Fleet (GET /api/usage .fleet)
+
+struct FleetDTO: Decodable {
+    struct Accounts: Decodable {
+        var total: Int
+        var counted: Int
+        var unknown: Int
+        var blocked: Int
+        var weightsAssumed: Int?
+    }
+    struct Event: Decodable {
+        var at: String
+        var inMs: Double
+        var kind: String
+        var account: String
+        var restoresPct: Double
+    }
+    struct Pace: Decodable {
+        struct Exhausting: Decodable { var account: String }
+        var ratio: Double?
+        var accounts: Int
+        var exhausting: [Exhausting]
+    }
+    var accounts: Accounts
+    var usedPct: Double?
+    var freePct: Double?
+    var backSoonPct: Double?
+    var lockedPct: Double?
+    var severity: String?
+    var soonMs: Double?
+    var events: [Event]
+    var nextEvent: Event?
+    var nextWeekly: Event?
+    var freshBy: String?
+    var pace: Pace
+
+    var tone: Severity {
+        switch severity { case "critical": return .alarm; case "warning": return .warn; default: return .normal }
+    }
+    var fillColor: Color {
+        switch tone { case .alarm: return Theme.alarm; case .warn: return Theme.warn; default: return Theme.calm }
+    }
+    var soonHours: Int { Int(((soonMs ?? 18_000_000) / 3_600_000).rounded()) }
+    /// Where usage would sit if the fleet were exactly on pace (the tick on the bar).
+    var onPacePct: Double? {
+        guard let r = pace.ratio, r > 0, let u = usedPct else { return nil }
+        return min(100, max(0, u / r))
+    }
 }
 
 struct AccountDTO: Decodable, Identifiable {
@@ -128,6 +180,21 @@ enum TimeFmt {
         if d > 0 { return "\(d)d \(h)h" }
         if h > 0 { return "\(h)h \(m)m" }
         return "\(m)m"
+    }
+
+    /// "in 3h 12m" / "now" — countdown to an event.
+    static func inText(_ iso: String?, now: Date = Date()) -> String {
+        let t = short(parse(iso), now: now)
+        if t == "now" { return "now" }
+        return t.isEmpty ? "" : "in \(t)"
+    }
+
+    /// "Wed, Sep 16 5:00 AM" for a far-off moment.
+    static func dayClock(_ iso: String?) -> String {
+        guard let d = parse(iso) else { return "" }
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d h:mm a"
+        return f.string(from: d)
     }
 
     static func resetText(_ iso: String?, now: Date = Date()) -> String {

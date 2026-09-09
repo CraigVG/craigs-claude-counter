@@ -7,6 +7,7 @@ struct CCCEntry: TimelineEntry {
     let date: Date
     let accounts: [AccountDTO]
     let offline: Bool
+    var fleet: FleetDTO? = nil
 }
 
 struct CCCProvider: TimelineProvider {
@@ -32,7 +33,7 @@ struct CCCProvider: TimelineProvider {
               let snap = try? JSONDecoder().decode(UsageSnapshot.self, from: data) else {
             return CCCEntry(date: Date(), accounts: [], offline: true)
         }
-        return CCCEntry(date: Date(), accounts: snap.accounts.sorted { $0.sortKey > $1.sortKey }, offline: false)
+        return CCCEntry(date: Date(), accounts: snap.accounts.sorted { $0.sortKey > $1.sortKey }, offline: false, fleet: snap.fleet)
     }
 }
 
@@ -121,6 +122,7 @@ struct CCCWidgetView: View {
             } else if entry.accounts.isEmpty {
                 Spacer(); Text("No accounts yet.").font(Theme.ui(12)).foregroundColor(Theme.ink3); Spacer()
             } else {
+                if let f = entry.fleet, f.usedPct != nil { WFleet(f: f) }
                 if let h = h {
                     Text("\(h.label) · \(Int(h.pct))% \(h.kind)")
                         .font(Theme.mono(10.5, .regular)).foregroundColor(h.sev == .normal ? Theme.ink3 : h.sev.color)
@@ -135,6 +137,46 @@ struct CCCWidgetView: View {
         .padding(2)
     }
 }
+
+/// Fleet capacity line: one bar (solid = locked until weekly resets, hatched =
+/// back within ~5h) plus the numbers, in the medium and large widgets.
+struct WFleet: View {
+    let f: FleetDTO
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geo in
+                let w = geo.size.width
+                let locked = w * min(100, max(0, f.lockedPct ?? 0)) / 100
+                let soon = w * min(100, max(0, f.backSoonPct ?? 0)) / 100
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(hex: 0x20242c))
+                    HStack(spacing: 0) {
+                        Rectangle().fill(f.fillColor).frame(width: locked)
+                        Stripes(spacing: 5, width: 2).fill(f.fillColor).frame(width: soon)
+                    }
+                    .clipShape(Capsule())
+                }
+            }
+            .frame(height: 6)
+            HStack(spacing: 4) {
+                Text("fleet").foregroundColor(Theme.ink3)
+                Text("\(Int((f.usedPct ?? 0).rounded()))% used").foregroundColor(f.tone == .normal ? Theme.ink2 : f.fillColor).fontWeight(.semibold)
+                Text("·").foregroundColor(Theme.ink4)
+                Text("\(Int((f.freePct ?? 0).rounded()))% free").foregroundColor(Theme.ink2)
+                if let s = f.backSoonPct, s >= 0.5 {
+                    Text("·").foregroundColor(Theme.ink4)
+                    Text("+\(Int(s.rounded()))% within \(f.soonHours)h").foregroundColor(Theme.ink3)
+                }
+                if let r = f.pace.ratio {
+                    Spacer(minLength: 4)
+                    Text(String(format: "%.1f× pace", r)).foregroundColor(r >= 1.15 ? Theme.warn : Theme.ink3)
+                }
+            }
+            .font(Theme.mono(10.5, .regular)).lineLimit(1).minimumScaleFactor(0.8)
+        }
+    }
+}
+
 
 struct WRow: View {
     let a: AccountDTO

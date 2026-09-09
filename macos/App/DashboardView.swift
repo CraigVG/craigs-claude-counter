@@ -27,7 +27,7 @@ struct BoardLayout {
     /// decide `auto` density. Chrome (244) = outer padding, header, summary
     /// strip, board header, legend and the spacing between them. A comfortable
     /// row is the stacked metric cell (~60pt) + 30pt padding + divider.
-    static func comfortableHeight(rows: Int) -> CGFloat { 244 + CGFloat(rows) * 91 }
+    static func comfortableHeight(rows: Int, fleet: Bool = false) -> CGFloat { 244 + (fleet ? 132 : 0) + CGFloat(rows) * 91 }
 }
 
 struct DashboardView: View {
@@ -40,11 +40,17 @@ struct DashboardView: View {
 
     private var density: Density { Density(rawValue: densityRaw) ?? .auto }
 
+    /// The fleet picture, when the engine could count at least one account.
+    private var fleet: FleetDTO? {
+        guard let f = model.snapshot?.fleet, f.usedPct != nil else { return nil }
+        return f
+    }
+
     private func isCompact(height: CGFloat) -> Bool {
         switch density {
         case .compact: return true
         case .comfortable: return false
-        case .auto: return BoardLayout.comfortableHeight(rows: accounts.count) > height
+        case .auto: return BoardLayout.comfortableHeight(rows: accounts.count, fleet: fleet != nil) > height
         }
     }
 
@@ -61,6 +67,9 @@ struct DashboardView: View {
                         summaryless
                         Spacer(minLength: 0)
                     } else {
+                        if let f = fleet {
+                            FleetBar(fleet: f, now: model.tick, compact: compact, narrow: narrow)
+                        }
                         SummaryStrip(accounts: accounts, now: model.tick, compact: compact)
                         ScrollView(showsIndicators: false) {
                             if narrow { cardsList } else { board(layout) }
@@ -447,6 +456,157 @@ struct OverageCell: View {
         }
     }
 }
+
+// MARK: - Fleet bar
+
+/// One capacity-weighted bar for every account: used capacity split into what
+/// is locked until a weekly reset (solid) and what comes back within ~5h
+/// (hatched), the rest of the track being free now. Mirrors the web block.
+struct FleetBar: View {
+    let fleet: FleetDTO
+    let now: Date
+    var compact: Bool = false
+    var narrow: Bool = false
+
+    private var fill: Color { fleet.fillColor }
+    private var numColor: Color { fleet.tone == .normal ? Theme.ink : fill }
+    private var pct1: (Double?) -> String { { v in v.map { String(format: "%.1f", $0) } ?? "—" } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 7 : 10) {
+            head
+            bar.frame(height: compact ? 8 : 12)
+            if !narrow { legend }
+            if !fleet.events.isEmpty { relief }
+        }
+        .padding(.horizontal, narrow ? 14 : (compact ? 16 : 20)).padding(.vertical, narrow ? 12 : (compact ? 10 : 15))
+        .background(Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hair, lineWidth: 1))
+    }
+
+    private var head: some View {
+        HStack(alignment: .firstTextBaseline, spacing: narrow ? 10 : 14) {
+            if !narrow {
+                Text("FLEET CAPACITY").font(Theme.mono(10.5, .medium)).foregroundColor(Theme.ink3).tracking(1.2)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text(pct1(fleet.usedPct)).font(Theme.mono(compact ? 18 : 24, .semibold)).foregroundColor(numColor)
+                Text("%").font(Theme.mono(compact ? 11 : 13, .medium)).foregroundColor(Theme.ink3)
+                Text(" used").font(Theme.ui(13, .medium)).foregroundColor(Theme.ink2)
+            }
+            HStack(spacing: 4) {
+                Text("\(pct1(fleet.freePct))%").font(Theme.mono(12.5, .semibold)).foregroundColor(Theme.ink)
+                Text("free now").font(Theme.mono(12.5, .regular)).foregroundColor(Theme.ink2)
+            }
+            Spacer(minLength: 8)
+            if !narrow, let r = fleet.pace.ratio {
+                let hot = r >= 1.15
+                let dry = fleet.pace.exhausting.count
+                HStack(spacing: 4) {
+                    Text("weekly burn").foregroundColor(Theme.ink3)
+                    Text(String(format: "%.1f×", r)).foregroundColor(hot ? Theme.warn : Theme.ink2).fontWeight(.semibold)
+                    Text("pace").foregroundColor(Theme.ink3)
+                    if dry > 0 {
+                        Text("·").foregroundColor(Theme.ink4)
+                        Text("\(dry)").foregroundColor(hot ? Theme.warn : Theme.ink2).fontWeight(.semibold)
+                        Text("of \(fleet.pace.accounts) run dry before reset").foregroundColor(Theme.ink3)
+                    }
+                }
+                .font(Theme.mono(11.5, .regular)).lineLimit(1).minimumScaleFactor(0.8)
+                .help("Weekly usage divided by the fraction of each weekly window already elapsed, weighted by plan")
+            }
+        }
+    }
+
+    private var bar: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let locked = w * min(100, max(0, fleet.lockedPct ?? 0)) / 100
+            let soon = w * min(100, max(0, fleet.backSoonPct ?? 0)) / 100
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color(hex: 0x20242c))
+                HStack(spacing: 0) {
+                    Rectangle().fill(fill).frame(width: locked)
+                    Stripes(spacing: 7, width: 3).fill(fill)
+                        .background(fill.opacity(fleet.tone == .normal ? 0 : 0.18))
+                        .frame(width: soon)
+                }
+                .clipShape(Capsule())
+                if let p = fleet.onPacePct {
+                    Rectangle().fill(Theme.ink.opacity(0.55)).frame(width: 2)
+                        .padding(.vertical, -2)
+                        .offset(x: max(0, min(w - 2, w * p / 100 - 1)))
+                        .help("on-pace usage: \(Int(p.rounded()))%")
+                }
+            }
+        }
+        .help(fleetTitle)
+    }
+
+    private var fleetTitle: String {
+        "Weighted by weekly capacity: Max 20x = 2× the 5x class (Max 5x, Team 5x), 5x = 3.5× Pro. Session limits act as throttles, not share."
+    }
+
+    private var legend: some View {
+        HStack(spacing: 16) {
+            key(swatch: AnyView(RoundedRectangle(cornerRadius: 2).fill(fill)), "\(pct1(fleet.lockedPct))%", "locked until weekly resets")
+            key(swatch: AnyView(RoundedRectangle(cornerRadius: 2).fill(fill.opacity(0.2)).overlay(Stripes(spacing: 4, width: 1.5).fill(fill)).clipShape(RoundedRectangle(cornerRadius: 2))), "\(pct1(fleet.backSoonPct))%", "back within \(fleet.soonHours)h")
+            key(swatch: AnyView(RoundedRectangle(cornerRadius: 2).fill(Color(hex: 0x20242c))), "\(pct1(fleet.freePct))%", "free now")
+            if fleet.onPacePct != nil {
+                key(swatch: AnyView(RoundedRectangle(cornerRadius: 1).fill(Theme.ink.opacity(0.55)).frame(width: 2)), nil, "sustainable pace")
+            }
+            if fleet.accounts.blocked > 0 {
+                HStack(spacing: 4) {
+                    Text("\(fleet.accounts.blocked)").foregroundColor(Theme.alarm).fontWeight(.semibold)
+                    Text("of \(fleet.accounts.counted) blocked").foregroundColor(Theme.ink3)
+                }
+            }
+            if fleet.accounts.unknown > 0 {
+                Text("\(fleet.accounts.unknown) not counted (no data)").foregroundColor(Theme.ink3)
+            }
+            Spacer(minLength: 0)
+        }
+        .font(Theme.mono(11, .regular)).lineLimit(1).minimumScaleFactor(0.75)
+    }
+
+    private func key(swatch: AnyView, _ value: String?, _ label: String) -> some View {
+        HStack(spacing: 6) {
+            swatch.frame(width: 9, height: 9)
+            if let v = value { Text(v).foregroundColor(Theme.ink2).fontWeight(.semibold) }
+            Text(label).foregroundColor(Theme.ink3)
+        }
+    }
+
+    private var relief: some View {
+        let shown = Array(fleet.events.prefix(narrow ? 2 : (compact ? 3 : 4)))
+        return VStack(alignment: .leading, spacing: 5) {
+            Divider().background(Theme.hairSoft)
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Text("NEXT").font(Theme.mono(10.5, .medium)).foregroundColor(Theme.ink4).tracking(1.2)
+                ForEach(Array(shown.enumerated()), id: \.offset) { _, e in
+                    HStack(spacing: 4) {
+                        Text(e.account).foregroundColor(Theme.ink2)
+                        Text(e.kind).foregroundColor(Theme.ink3)
+                        Text(TimeFmt.inText(e.at, now: now)).font(Theme.mono(12, .semibold)).foregroundColor(Theme.ink)
+                        Text(String(format: "+%.1f%%", e.restoresPct)).font(Theme.mono(12, .medium)).foregroundColor(Theme.ok)
+                    }
+                    .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if !narrow, let fb = fleet.freshBy {
+                    HStack(spacing: 4) {
+                        Text("all weekly windows fresh by").foregroundColor(Theme.ink4)
+                        Text(TimeFmt.dayClock(fb)).foregroundColor(Theme.ink3).fontWeight(.medium)
+                    }
+                    .font(Theme.mono(11, .regular)).lineLimit(1)
+                }
+            }
+            .font(Theme.ui(12.5)).minimumScaleFactor(0.8)
+        }
+    }
+}
+
 
 // MARK: - Summary
 

@@ -44,3 +44,22 @@ extension Color {
                   opacity: 1.0)
     }
 }
+
+/// Diagonal hatching used for the fleet bar's "back within 5h" segment.
+struct Stripes: Shape {
+    var spacing: CGFloat = 7
+    var width: CGFloat = 3
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        var x = -rect.height
+        while x < rect.width + rect.height {
+            p.move(to: CGPoint(x: x, y: rect.maxY))
+            p.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+            p.addLine(to: CGPoint(x: x + rect.height + width, y: rect.minY))
+            p.addLine(to: CGPoint(x: x + width, y: rect.maxY))
+            p.closeSubpath()
+            x += spacing
+        }
+        return p
+    }
+}
