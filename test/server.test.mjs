@@ -235,6 +235,25 @@ test('background refresh keeps near-expiry accounts alive, skips fresh ones', as
   assert.equal((await credstore.getAccount('fresh')).accessToken, undefined); // untouched
 });
 
+test('background refresh re-reads the plan tier daily when usage is provided', async () => {
+  const credstore = memStore([
+    { id: 'team', label: 'team', tier: 'Max 5x', accessToken: 'AT', refreshToken: 'R', expiresAt: Date.now() + 10 * 3600_000 },
+    { id: 'seen', label: 'seen', tier: 'Max 20x', accessToken: 'AT2', refreshToken: 'R2', expiresAt: Date.now() + 10 * 3600_000, tierCheckedAt: Date.now() - 1000 },
+  ]);
+  const looked = [];
+  const usage = { fetchProfile: async (tok) => { looked.push(tok); return { email: 'x', tier: 'Team 5x' }; } };
+  const oauth = { refresh: async () => { throw new Error('should not refresh'); } };
+  const stop = startBackgroundRefresh({ credstore, oauth, usage, locks: new Map(), intervalMs: 9_999_999, refreshWithinMs: 60_000 });
+  await new Promise((r) => setTimeout(r, 40));
+  stop();
+  assert.deepEqual(looked, ['AT']); // 'seen' was checked recently -> skipped
+  const team = await credstore.getAccount('team');
+  assert.equal(team.tier, 'Team 5x');
+  assert.ok(team.tierCheckedAt > 0);
+  assert.equal(team.accessToken, 'AT'); // tokens untouched
+  assert.equal((await credstore.getAccount('seen')).tier, 'Max 20x');
+});
+
 test('GET / serves the dashboard html', async () => {
   const { base, close } = await boot({ credstore: memStore(), usage: {}, oauth: {} });
   try {

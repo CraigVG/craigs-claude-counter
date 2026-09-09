@@ -34,10 +34,13 @@
 
 export const SESSION_MS = 5 * 60 * 60 * 1000;
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-// Weekly capacity relative to Pro. Max 20x = 2 x Max 5x (observed), Max 5x =
-// 3.5 x Pro (published 140-280 vs 40-80 Sonnet-hours a week). Unknown plans
-// are weighted as Max 5x and flagged. These are the weights the bar uses.
-export const DEFAULT_WEIGHTS = { 'Max 20x': 7, 'Max 5x': 3.5, Max: 3.5, Pro: 1, unknown: 3.5 };
+// Weekly capacity relative to Pro. Max 20x = 2 x Max 5x (Craig's observation;
+// the history log's burn ratios put it near 2.3x, Anthropic's published hour
+// ranges near 1.7x), Max 5x = 3.5 x Pro (published 140-280 vs 40-80
+// Sonnet-hours a week). Team seats carry the limiter's own bucket class in
+// their label ("Team 5x") and are weighted like that class. Unknown plans are
+// weighted as the 5x class and flagged. These are the weights the bar uses.
+export const DEFAULT_WEIGHTS = { 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Max: 3.5, Pro: 1, unknown: 3.5 };
 // The 5-hour session bucket does follow the plan multiplier. Not used for the
 // bar (see the model note above); exported for anyone reasoning about burst rate.
 export const SESSION_WEIGHTS = { 'Max 20x': 20, 'Max 5x': 5, Max: 5, Pro: 1, unknown: 5 };
@@ -53,6 +56,7 @@ export function tierWeight(tier, weights = DEFAULT_WEIGHTS) {
   if (/20x/.test(t)) return { weight: weights['Max 20x'] ?? 7, assumed: false };
   if (/5x/.test(t)) return { weight: weights['Max 5x'] ?? 3.5, assumed: false };
   if (/max/.test(t)) return { weight: weights.Max ?? 3.5, assumed: false };
+  if (/team/.test(t)) return { weight: weights.unknown ?? 3.5, assumed: true }; // Team seat with no multiplier in the label
   if (/pro/.test(t)) return { weight: weights.Pro ?? 1, assumed: false };
   return { weight: weights.unknown ?? 3.5, assumed: true };
 }

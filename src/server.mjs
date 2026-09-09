@@ -60,16 +60,28 @@ export async function ensureFresh(account, { oauth, credstore, now = Date.now(),
 // Proactively keep tokens alive so accounts stay logged in even when the
 // dashboard is never opened. Refreshes any token within `refreshWithinMs` of
 // expiry, on a timer, through the single-flight lock. Returns a stop function.
-export function startBackgroundRefresh({ credstore, oauth, locks, intervalMs = 30 * 60_000, refreshWithinMs = 60 * 60_000, log = () => {} }) {
+// When `usage` is given, also re-reads each account's plan tier from the
+// profile endpoint once per `tierEveryMs` (default daily), so a plan change or
+// a label fix lands without a re-login. Token refresh is never skipped for it.
+export function startBackgroundRefresh({ credstore, oauth, usage, locks, intervalMs = 30 * 60_000, refreshWithinMs = 60 * 60_000, tierEveryMs = 24 * 60 * 60_000, log = () => {} }) {
   const tick = async () => {
     let accounts = [];
     try { accounts = await credstore.listAccounts(); } catch { return; }
     const now = Date.now();
-    for (const a of accounts) {
+    for (let a of accounts) {
       if (!a.refreshToken) continue;
-      if (a.expiresAt && a.expiresAt - now > refreshWithinMs) continue; // still fresh enough
-      try { await refreshAccount(a, { oauth, credstore, locks }); log(`kept ${a.label} logged in`); }
-      catch (e) { log(`refresh failed for ${a.label}: ${e.needsRelogin ? 'needs re-login' : (e.message || e)}`); }
+      if (!a.expiresAt || a.expiresAt - now <= refreshWithinMs) {
+        try { a = await refreshAccount(a, { oauth, credstore, locks }); log(`kept ${a.label} logged in`); }
+        catch (e) { log(`refresh failed for ${a.label}: ${e.needsRelogin ? 'needs re-login' : (e.message || e)}`); continue; }
+      }
+      if (!usage || !a.accessToken || (a.tierCheckedAt && now - a.tierCheckedAt < tierEveryMs)) continue;
+      try {
+        const profile = await usage.fetchProfile(a.accessToken);
+        const latest = await credstore.getAccount(a.id); // refreshed tokens may have landed meanwhile
+        if (!latest) continue;
+        if (profile.tier && profile.tier !== latest.tier) log(`${a.label} plan is now ${profile.tier} (was ${latest.tier || 'unknown'})`);
+        await credstore.putAccount({ ...latest, tier: profile.tier || latest.tier || null, tierCheckedAt: now });
+      } catch (e) { log(`plan check failed for ${a.label}: ${e.message || e}`); }
     }
   };
   const timer = setInterval(() => { tick().catch(() => {}); }, intervalMs);
@@ -353,6 +365,7 @@ if (isMain) {
   startBackgroundRefresh({
     credstore,
     oauth: oauthLib,
+    usage: usageLib,
     locks: refreshLocks,
     intervalMs: config.bgRefreshIntervalMs,
     refreshWithinMs: config.bgRefreshWithinMs,

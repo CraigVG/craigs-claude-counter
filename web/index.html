@@ -495,8 +495,8 @@ function renderFleet(accounts){
   if(f.pace.ratio != null) legend.push(`<span class="k"><span class="sw mark"></span>sustainable pace</span>`);
   if(f.accounts.blocked) legend.push(`<span class="k blocked"><b>${f.accounts.blocked}</b> of ${f.accounts.counted} blocked</span>`);
   if(f.accounts.unknown) legend.push(`<span class="k">${f.accounts.unknown} not counted (no data)</span>`);
-  if(f.accounts.weightsAssumed) legend.push(`<span class="k">${f.accounts.weightsAssumed} plan${f.accounts.weightsAssumed===1?'':'s'} unknown, weighted as Max 5x</span>`);
-  legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Max 20x = 2x Max 5x, Max 5x = 3.5x Pro. Session limits act as throttles, not share.">weighted by weekly capacity</span>`);
+  if(f.accounts.weightsAssumed) legend.push(`<span class="k">${f.accounts.weightsAssumed} plan${f.accounts.weightsAssumed===1?'':'s'} unknown, weighted as the 5x class</span>`);
+  legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Max 20x = 2x the 5x class (Max 5x and Team 5x seats), 5x = 3.5x Pro. Session limits act as throttles, not share.">weighted by weekly capacity</span>`);
 
   // Pace: weighted weekly usage vs the elapsed share of each window. The tick
   // on the bar is where usage would sit if the fleet were exactly on pace.
@@ -659,7 +659,7 @@ function demoData(){
   if(DEMO_MODE === 'many'){
     accounts.push(
       { id:'d6',  label:'billing@acme.dev',     tier:'Max 5x',  stale:true, usage:{ session:win(73,131), weekly:win(45,8460), weeklyModels:[mdl('Fable',16,8460)], overage:null } },
-      { id:'d7',  label:'research team',        tier:'Max 20x', usage:{ session:win(67,271), weekly:win(42,941), weeklyModels:[mdl('Fable',20,941), mdl('Opus',55,941)], overage:{enabled:true, usedUsd:600.92, limitUsd:615, pct:98} } },
+      { id:'d7',  label:'research team',        tier:'Team 5x', usage:{ session:win(67,271), weekly:win(42,941), weeklyModels:[mdl('Fable',20,941), mdl('Opus',55,941)], overage:{enabled:true, usedUsd:600.92, limitUsd:615, pct:98} } },
       { id:'d8',  label:'qa@example.com',       tier:'Max 5x',  usage:{ session:win(21,64), weekly:win(50,2100), weeklyModels:[mdl('Fable',18,2100)], overage:null } },
       { id:'d9',  label:'org workspace',        tier:'default_raven', usage:{ session:win(90,31), weekly:win(12,9600), weeklyModels:[mdl('Fable',10,9600)], overage:null } },
       { id:'d10', label:'contractor@agency.io', tier:'Pro',     usage:{ session:win(5,290), weekly:win(9,4000), weeklyModels:[], overage:null } },

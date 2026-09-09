@@ -4,6 +4,12 @@ import { USAGE_URL, PROFILE_URL, ANTHROPIC_BETA, USER_AGENT } from './config.mjs
 // Map an Anthropic rate_limit_tier to a short, friendly plan name.
 export function prettyTier(rateLimitTier, orgType) {
   const t = String(rateLimitTier || '');
+  // Team seats report a Max-style rate_limit_tier (e.g. default_claude_max_5x):
+  // that is the bucket class the limiter applies, but the plan is Team, so say so.
+  if (orgType === 'claude_team') {
+    const m = t.match(/max_(\d+x)/);
+    return m ? `Team ${m[1]}` : 'Team';
+  }
   if (/max_20x/.test(t)) return 'Max 20x';
   if (/max_5x/.test(t)) return 'Max 5x';
   if (/max/.test(t)) return 'Max';

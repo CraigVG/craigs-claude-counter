@@ -99,6 +99,8 @@ test('prettyTier maps rate_limit_tier', () => {
   assert.equal(prettyTier('default_claude_max_5x'), 'Max 5x');
   assert.equal(prettyTier('default_claude_pro'), 'Pro');
   assert.equal(prettyTier(null, 'claude_max'), 'Max');
+  assert.equal(prettyTier('default_claude_max_5x', 'claude_team'), 'Team 5x');
+  assert.equal(prettyTier(null, 'claude_team'), 'Team');
 });
 
 test('fetchUsage throws with status on non-OK', async () => {

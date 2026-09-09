@@ -17,6 +17,8 @@ test('tierWeight maps plans and flags unknown tiers as assumed', () => {
   assert.deepEqual(tierWeight('default_raven'), { weight: 3.5, assumed: true });
   assert.deepEqual(tierWeight(null), { weight: 3.5, assumed: true });
   assert.equal(tierWeight('Max 20x').weight / tierWeight('Max 5x').weight, 2);
+  assert.deepEqual(tierWeight('Team 5x'), { weight: 3.5, assumed: false });
+  assert.deepEqual(tierWeight('Team'), { weight: 3.5, assumed: true });
 });
 
 test('empty fleet yields nulls, not NaN', () => {
