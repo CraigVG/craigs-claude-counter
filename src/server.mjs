@@ -8,6 +8,7 @@ import { createCredStore, newAccountId } from './credstore.mjs';
 import * as oauthLib from './oauth.mjs';
 import * as usageLib from './usage.mjs';
 import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv } from './history.mjs';
+import { computeFleet } from './fleet.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(__dirname, '..', 'web');
@@ -188,7 +189,8 @@ export function createServer(deps = {}) {
     const results = await Promise.all(
       accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
     );
-    return { generatedAt: new Date().toISOString(), thresholds, accounts: results };
+    // `fleet` folds every account into one capacity-weighted picture (see src/fleet.mjs).
+    return { generatedAt: new Date().toISOString(), thresholds, accounts: results, fleet: computeFleet(results, thresholds) };
   };
 
   // Shared query parsing for the history routes.
@@ -209,6 +211,14 @@ export function createServer(deps = {}) {
         const html = await readFile(join(WEB_DIR, 'index.html'), 'utf8');
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(html);
+      }
+
+      // The fleet aggregation module, shared with the browser so the page can
+      // recompute countdowns and demo data with the exact server logic.
+      if (req.method === 'GET' && path === '/fleet.mjs') {
+        const js = await readFile(join(__dirname, 'fleet.mjs'), 'utf8');
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(js);
       }
 
       if (req.method === 'GET' && path === '/api/usage') {

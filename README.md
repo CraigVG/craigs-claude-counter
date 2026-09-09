@@ -43,7 +43,19 @@ The app and widget are the same Status Board rendered natively in SwiftUI; they 
 - **Per‑model weekly sub‑limits** (Opus / Sonnet) and **overage** spend, when active
 - Auto‑detected plan tier (Max 20× / Max 5× / Pro)
 - A top summary — how many accounts need attention and the single most‑pressing fact. The board lists the most available account first and the most constrained last
+- A **fleet bar** — every account folded into one capacity‑weighted number (see below), split into what is free now, what comes back within the next 5 hours, and what stays locked until a weekly reset, plus a schedule of the next resets and a weekly burn‑rate check
 - **Compact mode** — one line per account so many accounts fit without scrolling. Auto‑enabled when the normal rows would overflow the window; pin it either way with the **Compact** button (⌘⇧K in the app). `?demo=many` previews it with 12 fake accounts.
+
+## The fleet bar (how "total usage" is computed)
+
+Percentages from different plans are not comparable, and within one account the 5‑hour and weekly windows are not additive. The fleet bar deals with both:
+
+- **Each account is weighted by plan capacity** — Max 20x = 20, Max 5x = 5, Pro = 1 (Anthropic's own multipliers). An unknown plan is weighted as Max 5x and flagged.
+- **An account's effective usage is its binding window** — `max(session, weekly, per‑model weekly)`, because that is the one that blocks it. Fleet usage is the weighted mean of effective usage; "free now" is the weighted headroom.
+- **Time is folded in through resets.** Both windows drop to zero at their reset time, so each account contributes at most two relief events. Played in time order they say exactly how much fleet capacity each reset gives back (after the earlier reset the account is still bound by the later window). Used capacity is then split into **back within 5h** (hatched) and **locked until a weekly reset** (solid). The `Next` line lists the soonest events and when every weekly window will have rolled over.
+- **Weekly burn vs. pace** compares each weekly window's usage with the share of that window already elapsed (87% used with 29% of the week gone is 3× pace). The tick on the bar marks where fleet usage would sit if it were exactly on pace, and accounts projected to run out before their reset at the current rate are counted.
+
+The same numbers are in `GET /api/usage` under `fleet` and at the top of `claude-usage`; the logic lives in `src/fleet.mjs` and is served to the page as `/fleet.mjs` so both use identical code.
 
 ## How it works (and why it's safe)
 

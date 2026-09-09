@@ -65,6 +65,53 @@
   .summary .total { font-family: var(--mono); font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
   .summary .total b { color: var(--ink); font-weight: 600; }
 
+  /* Fleet bar: one capacity-weighted picture of every account, and when
+     used capacity comes back. Used is split into "locked until a weekly
+     reset" (solid) and "back within 5h" (hatched); the rest of the track
+     is free now. */
+  .fleet { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--radius); padding: 15px 20px 13px; margin-bottom: 14px; }
+  .fleet-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 10px; }
+  .fleet-title { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .fleet-num { font-family: var(--mono); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "zero" 1; line-height: 1; color: var(--ink); letter-spacing: -0.01em; white-space: nowrap; }
+  .fleet-num .sym { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-left: 1px; }
+  .fleet-num .lbl { font-family: var(--ui); font-size: 13px; font-weight: 500; color: var(--ink-2); margin-left: 6px; letter-spacing: 0; }
+  .fleet.warn .fleet-num { color: var(--warn); } .fleet.alarm .fleet-num { color: var(--alarm); }
+  .fleet-free { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+  .fleet-free b { color: var(--ink); font-weight: 600; }
+  .fleet-head .spacer { flex: 1; }
+  .fleet-pace { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+  .fleet-pace b { color: var(--ink-2); font-weight: 600; }
+  .fleet-pace.hot b { color: var(--warn); }
+  .fleet-bar { position: relative; height: 12px; width: 100%; background: #20242c; border-radius: 6px; overflow: hidden; display: flex; }
+  .fleet-bar > i { display: block; height: 100%; width: 0; transition: width .45s cubic-bezier(.2,.7,.3,1); }
+  .fleet-bar > i.locked { background: var(--calm); border-radius: 6px 0 0 6px; }
+  .fleet-bar > i.soon { background: repeating-linear-gradient(135deg, var(--calm) 0 3px, transparent 3px 7px); opacity: .85; }
+  .fleet.warn .fleet-bar > i.locked { background: var(--warn); }
+  .fleet.warn .fleet-bar > i.soon { background: repeating-linear-gradient(135deg, var(--warn) 0 3px, rgba(217,162,58,0.18) 3px 7px); }
+  .fleet.alarm .fleet-bar > i.locked { background: var(--alarm); }
+  .fleet.alarm .fleet-bar > i.soon { background: repeating-linear-gradient(135deg, var(--alarm) 0 3px, rgba(229,72,77,0.2) 3px 7px); }
+  .fleet-bar .pace-mark { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); opacity: .55; transform: translateX(-1px); pointer-events: none; }
+  .fleet-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 9px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.01em; }
+  .fleet-legend .k { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .fleet-legend .k b { color: var(--ink-2); font-weight: 600; }
+  .fleet-legend .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; background: var(--calm); flex: none; }
+  .fleet-legend .sw.soon { background: repeating-linear-gradient(135deg, var(--calm) 0 2px, transparent 2px 4px); border: 1px solid var(--calm); }
+  .fleet-legend .sw.free { background: #20242c; }
+  .fleet-legend .sw.mark { width: 2px; height: 11px; background: var(--ink); opacity: .55; border-radius: 1px; }
+  .fleet.warn .fleet-legend .sw:not(.free):not(.mark) { background: var(--warn); } .fleet.warn .fleet-legend .sw.soon { background: repeating-linear-gradient(135deg, var(--warn) 0 2px, transparent 2px 4px); border-color: var(--warn); }
+  .fleet.alarm .fleet-legend .sw:not(.free):not(.mark) { background: var(--alarm); } .fleet.alarm .fleet-legend .sw.soon { background: repeating-linear-gradient(135deg, var(--alarm) 0 2px, transparent 2px 4px); border-color: var(--alarm); }
+  .fleet-legend .blocked b { color: var(--alarm); }
+  .fleet-relief { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hair-soft); font-size: 12.5px; color: var(--ink-3); }
+  .fleet-relief .rl { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); white-space: nowrap; }
+  .fleet-relief .ev { white-space: nowrap; }
+  .fleet-relief .ev .who { color: var(--ink-2); }
+  .fleet-relief .ev .in { font-family: var(--mono); color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .fleet-relief .ev .gain { font-family: var(--mono); color: var(--ok); font-weight: 500; }
+  .fleet-relief .fresh { white-space: nowrap; margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
+  .fleet-relief .fresh b { color: var(--ink-3); font-weight: 500; }
+  .fleet { animation: rise .3s cubic-bezier(.2,.7,.3,1) both; }
+  @media (prefers-reduced-motion: reduce) { .fleet { animation: none; } .fleet-bar > i { transition: none; } }
+
   /* Board */
   .board { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--radius); overflow: hidden; }
   .board-scroll { overflow-x: auto; }
@@ -182,6 +229,12 @@
     body.compact .summary { padding: 9px 16px; margin-bottom: 14px; gap: 14px; }
     body.compact .summary .sig { font-size: 10px; padding: 3px 8px; }
     body.compact .summary .line { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.compact .fleet { padding: 10px 16px 9px; margin-bottom: 10px; animation: none; }
+    body.compact .fleet-head { margin-bottom: 7px; }
+    body.compact .fleet-num { font-size: 18px; }
+    body.compact .fleet-bar { height: 8px; }
+    body.compact .fleet-legend { margin-top: 7px; }
+    body.compact .fleet-relief { margin-top: 7px; padding-top: 7px; font-size: 12px; }
     body.compact .grid { grid-template-columns: 14px minmax(170px,1.2fr) 96px minmax(214px,1.4fr) minmax(214px,1.4fr) minmax(118px,0.8fr) minmax(156px,0.9fr) 92px; min-width: 1080px; }
     body.compact .head > div { padding: 8px 14px; }
     body.compact .row > div { padding: 6px 14px; }
@@ -218,6 +271,11 @@
     .acct-count { display: none; }
     .controls { flex-wrap: wrap; justify-content: flex-start; }
     .summary { display: block !important; }
+    .fleet-head { flex-wrap: wrap; gap: 8px 14px; }
+    .fleet-head .spacer { display: none; }
+    .fleet-pace { width: 100%; white-space: normal; }
+    .fleet-relief .fresh { margin-left: 0; width: 100%; }
+    .fleet-relief .ev { white-space: normal; }
     .summary .sig { display: inline-block; margin-bottom: 9px; }
     .summary .line { display: block; }
     .summary .spacer { display: none; }
@@ -258,6 +316,8 @@
       </div>
     </div>
 
+    <div id="fleet" class="fleet" style="display:none"></div>
+
     <div id="summary" class="summary" role="status" style="display:none"></div>
 
     <div class="board" id="board" style="display:none">
@@ -297,6 +357,7 @@
   </div>
 
 <script type="module">
+import { computeFleet } from '/fleet.mjs';
 const $ = (s) => document.querySelector(s);
 let latest = null;
 let lastError = null;
@@ -409,6 +470,66 @@ function rowFor(a){
   </div>`;
 }
 
+// ---- fleet bar: every account folded into one capacity-weighted picture ----
+// Computed client-side (same module the server uses for /api/usage.fleet) so
+// demo mode works and countdowns can tick without re-fetching.
+const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const fmtClock = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+function inText(iso){ const t = shortDur(iso); return t === 'now' ? 'now' : t ? `in ${t}` : ''; }
+function fleetFor(accounts){
+  return computeFleet(accounts, { warnPct: latest?.thresholds?.warnPct ?? 70, critPct: latest?.thresholds?.critPct ?? 90 });
+}
+function renderFleet(accounts){
+  const el = $('#fleet');
+  const f = fleetFor(accounts);
+  if(f.usedPct == null){ el.style.display = 'none'; return; }
+  const tone = f.severity === 'critical' ? 'alarm' : f.severity === 'warning' ? 'warn' : 'clear';
+  const soonH = Math.round(f.soonMs / 3600000);
+  const perTitle = f.perAccount.map(p => `${p.label}: ${p.effectivePct}% used (${p.tier || 'unknown plan'}, ${p.sharePct}% of fleet)`).join('\n');
+
+  const legend = [
+    `<span class="k"><span class="sw"></span><b>${f.lockedPct}%</b> locked until weekly resets</span>`,
+    `<span class="k"><span class="sw soon"></span><b>${f.backSoonPct}%</b> back within ${soonH}h</span>`,
+    `<span class="k"><span class="sw free"></span><b>${f.freePct}%</b> free now</span>`,
+  ];
+  if(f.pace.ratio != null) legend.push(`<span class="k"><span class="sw mark"></span>sustainable pace</span>`);
+  if(f.accounts.blocked) legend.push(`<span class="k blocked"><b>${f.accounts.blocked}</b> of ${f.accounts.counted} blocked</span>`);
+  if(f.accounts.unknown) legend.push(`<span class="k">${f.accounts.unknown} not counted (no data)</span>`);
+  if(f.accounts.weightsAssumed) legend.push(`<span class="k">${f.accounts.weightsAssumed} plan${f.accounts.weightsAssumed===1?'':'s'} unknown, weighted as Max 5x</span>`);
+
+  // Pace: weighted weekly usage vs the elapsed share of each window. The tick
+  // on the bar is where usage would sit if the fleet were exactly on pace.
+  let pace = '', paceMark = '';
+  if(f.pace.ratio != null){
+    const hot = f.pace.ratio >= 1.15;
+    const dry = f.pace.exhausting.length;
+    pace = `<span class="fleet-pace ${hot?'hot':''}" title="Weekly usage divided by the fraction of each weekly window already elapsed, weighted by plan">weekly burn <b>${f.pace.ratio.toFixed(1)}&times;</b> pace${dry ? ` &middot; <b>${dry}</b> of ${f.pace.accounts} run dry before reset` : ''}</span>`;
+    const onPace = Math.max(0, Math.min(100, f.usedPct / f.pace.ratio));
+    paceMark = `<span class="pace-mark" style="left:${onPace}%" title="on-pace usage: ${Math.round(onPace)}%"></span>`;
+  }
+
+  const evs = f.events.slice(0, 4).map(e => `<span class="ev"><span class="who">${esc(e.account)}</span> ${esc(e.kind)} <span class="in" data-in="${esc(e.at)}">${esc(inText(e.at))}</span> <span class="gain">+${e.restoresPct}%</span></span>`);
+  const relief = f.events.length
+    ? `<div class="fleet-relief"><span class="rl">Next</span>${evs.join('')}${f.freshBy ? `<span class="fresh">all weekly windows fresh by <b>${esc(fmtDay(f.freshBy))} ${esc(fmtClock(f.freshBy))}</b></span>` : ''}</div>`
+    : '';
+
+  el.className = `fleet ${tone}`;
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="fleet-head">
+      <span class="fleet-title">Fleet capacity</span>
+      <span class="fleet-num">${f.usedPct}<span class="sym">%</span><span class="lbl">used</span></span>
+      <span class="fleet-free"><b>${f.freePct}%</b> free now</span>
+      <span class="spacer"></span>
+      ${pace}
+    </div>
+    <div class="fleet-bar" role="img" aria-label="Fleet ${f.usedPct}% used, ${f.freePct}% free" title="${esc(perTitle)}">
+      <i class="locked" style="width:${f.lockedPct}%"></i><i class="soon" style="width:${f.backSoonPct}%"></i>${paceMark}
+    </div>
+    <div class="fleet-legend">${legend.join('')}</div>
+    ${relief}`;
+}
+
 function buildSummary(accounts){
   const el = $('#summary');
   const live = accounts.filter(a => a.usage);
@@ -460,8 +581,8 @@ function render(){
   $('#empty').style.display = has ? 'none' : 'block';
   $('#acct-count').textContent = has ? `${accounts.length} account${accounts.length===1?'':'s'}` : '';
   $('#density').style.display = has ? '' : 'none';
-  if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); buildSummary(accounts); }
-  else { $('#summary').style.display = 'none'; }
+  if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); renderFleet(accounts); buildSummary(accounts); }
+  else { $('#fleet').style.display = 'none'; $('#summary').style.display = 'none'; }
   updateFreshness();
   applyDensity();
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del, b.dataset.label));
@@ -512,8 +633,9 @@ function tick(){
   updateFreshness();
   document.querySelectorAll('[data-reset]').forEach(el => {
     const iso = el.getAttribute('data-reset');
-    if(iso){ const t = el.classList.contains('when') ? resetText(iso) : resetText(iso); el.textContent = t; }
+    if(iso){ el.textContent = resetText(iso); }
   });
+  document.querySelectorAll('[data-in]').forEach(el => { const iso = el.getAttribute('data-in'); if(iso) el.textContent = inText(iso); });
 }
 
 // Demo mode (?demo): render representative fake accounts so the UI can be

@@ -46,11 +46,27 @@ function fail(e) {
   process.exit(1);
 }
 
+// One capacity-weighted line for the whole fleet, plus when capacity comes back.
+function showFleet(f) {
+  if (!f || f.usedPct == null) return;
+  const width = 30;
+  const locked = Math.round((f.lockedPct / 100) * width);
+  const soon = Math.round((f.backSoonPct / 100) * width);
+  const track = '█'.repeat(locked) + '▒'.repeat(soon) + '░'.repeat(Math.max(0, width - locked - soon));
+  const soonH = Math.round(f.soonMs / 3600000);
+  console.log(`fleet     ${track} ${String(Math.round(f.usedPct)).padStart(3)}% used   ${Math.round(f.freePct)}% free now, ${Math.round(f.backSoonPct)}% back within ${soonH}h, ${Math.round(f.lockedPct)}% until weekly resets${f.accounts.blocked ? `, ${f.accounts.blocked} blocked` : ''}`);
+  if (f.pace.ratio != null) console.log(`          weekly burn ${f.pace.ratio.toFixed(1)}x pace${f.pace.exhausting.length ? `; ${f.pace.exhausting.length} of ${f.pace.accounts} run dry before their reset at this rate` : ''}`);
+  const next = f.events.slice(0, 3).map((e) => `${e.account} ${e.kind} in ${reset(e.at)} (+${e.restoresPct}%)`).join(', ');
+  if (next) console.log(`          next: ${next}${f.freshBy ? `; all weekly windows fresh by ${new Date(f.freshBy).toLocaleString()}` : ''}`);
+  console.log('');
+}
+
 async function showNow() {
   const res = await fetch(base + '/api/usage');
   const data = await res.json();
   if (!data.accounts?.length) { console.log('No accounts yet. Open the dashboard and add one.'); return; }
   console.log(`Claude Code usage  (${new Date(data.generatedAt).toLocaleTimeString()})\n`);
+  showFleet(data.fleet);
   for (const a of data.accounts) {
     const label = (a.label || a.id).padEnd(26).slice(0, 26);
     if (a.error) { console.log(`${label}  ${a.error === 'needs_relogin' ? 'NEEDS RE-LOGIN' : 'unavailable: ' + (a.message || a.error)}`); continue; }
