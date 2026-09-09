@@ -37,6 +37,33 @@ export function recordFrom(a, ts = new Date().toISOString()) {
   };
 }
 
+// Inverse of recordFrom: rebuild a /api/usage `usage` object from a logged
+// record, so last-known numbers can be served after a restart (the in-memory
+// cache is empty then, and the first burst of upstream calls gets 429s).
+export function usageFromRecord(r, { warnPct = 70, critPct = 90 } = {}) {
+  if (!r || (!r.session && !r.weekly)) return null;
+  const sev = (pct) => (pct == null ? 'unknown' : pct >= critPct ? 'critical' : pct >= warnPct ? 'warning' : 'normal');
+  const win = (w) => (w && w.pct != null ? { pct: w.pct, resetsAt: w.resetsAt || null, severity: sev(w.pct), active: null } : null);
+  const weeklyModels = (r.models || []).map((m) => ({ name: m.name, pct: m.pct, resetsAt: m.resetsAt || null, severity: sev(m.pct), active: null }));
+  const byName = (n) => weeklyModels.find((m) => m.name === n) || null;
+  return {
+    session: win(r.session),
+    weekly: win(r.weekly),
+    weeklyModels,
+    weeklyOpus: byName('Opus'),
+    weeklySonnet: byName('Sonnet'),
+    overage: r.overage ? { usedUsd: r.overage.usedUsd, limitUsd: r.overage.limitUsd, pct: r.overage.pct, currency: 'USD', enabled: true } : null,
+  };
+}
+
+// The newest usable record per account id from a time-ordered record list
+// (error-only samples carry no numbers and are skipped).
+export function latestPerAccount(records) {
+  const out = new Map();
+  for (const r of records) if (r.session || r.weekly) out.set(r.account, r);
+  return out;
+}
+
 // "24h" / "7d" / "90m" / "30s" -> ms before `now`; ISO date/time -> its epoch ms;
 // a plain number -> epoch ms. Returns null when unparseable.
 export function parseTime(v, now = Date.now()) {

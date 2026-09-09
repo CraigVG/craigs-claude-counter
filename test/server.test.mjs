@@ -318,3 +318,30 @@ test('/api/history is 404 when history is disabled', async () => {
     assert.equal((await fetch(base + '/api/history')).status, 404);
   } finally { await close(); }
 });
+
+test('startup seeds the usage cache from history so a 429 burst serves last-known data', async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createHistory, recordFrom } = await import('../src/history.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'ccc-server-seed-'));
+  const history = createHistory({ dir });
+  const ts = new Date(Date.now() - 5 * 60_000).toISOString();
+  await history.append([recordFrom({ id: 'ok', label: 'ok@x', tier: 'Max 20x', usage: { ...goodUsage, weeklyModels: [{ name: 'Fable', pct: 12 }] } }, ts)]);
+  const credstore = memStore([{ id: 'ok', label: 'ok@x', tier: 'Max 20x', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }]);
+  let calls = 0;
+  const usage = { fetchUsage: async () => { calls++; const e = new Error('rate limited'); e.status = 429; throw e; } };
+  const oauth = { refresh: async () => { throw new Error('no'); } };
+  const { collectUsage, seeded } = createServer({ config: baseConfig, credstore, usage, oauth, history });
+  try {
+    assert.equal(await seeded, 1);
+    const out = await collectUsage();
+    const a = out.accounts[0];
+    assert.equal(calls, 1);                 // the seed is not fresh, so upstream was tried
+    assert.equal(a.stale, true);            // ...and on 429 the seeded numbers are served
+    assert.equal(a.usage.weekly.pct, 60);
+    assert.equal(a.status, 429);
+    assert.ok(a.staleAgeMs >= 5 * 60_000 - 1000);
+    assert.equal(out.fleet.accounts.counted, 1);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

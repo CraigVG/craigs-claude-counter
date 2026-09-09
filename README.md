@@ -86,6 +86,8 @@ All optional (sensible defaults; nothing required):
 
 The engine polls every account on its own timer (default every 5 minutes, dashboard open or not) and appends one record per account to `history/usage-YYYY-MM-DD.jsonl` (UTC day files, 90 days kept). Only labels, tiers, percentages, reset times and overage dollars are logged, never tokens.
 
+On startup the engine also reads the newest record per account (up to 24 hours old) back into its cache, so a restart shows last‑known numbers tagged **cached** while the first burst of upstream calls rides out the usage endpoint's rate limit, instead of leaving accounts blank for a couple of minutes. The first live fetch replaces the seed.
+
 One record looks like:
 
 ```json

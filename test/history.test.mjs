@@ -183,3 +183,22 @@ test('startUsagePoller logs one record per account on each tick', async () => {
     } finally { poller.stop(); }
   } finally { await cleanup(); }
 });
+
+test('usageFromRecord inverts recordFrom closely enough to serve as last-known usage', async () => {
+  const { usageFromRecord, latestPerAccount } = await import('../src/history.mjs');
+  const r = recordFrom(acct(), '2026-09-08T18:00:00.000Z');
+  const u = usageFromRecord(r);
+  assert.equal(u.session.pct, 42);
+  assert.equal(u.session.resetsAt, '2026-09-08T20:00:00Z');
+  assert.equal(u.weekly.pct, 61.5);
+  assert.equal(u.weekly.severity, 'normal');
+  assert.deepEqual(u.weeklyModels.map((m) => m.name), ['Fable']);
+  assert.equal(u.overage.enabled, true);
+  assert.equal(u.overage.usedUsd, 12.5);
+  assert.equal(usageFromRecord(recordFrom({ id: 'x', label: 'x', error: 'needs_relogin' })), null);
+  // latestPerAccount keeps the newest record with numbers per account id.
+  const older = recordFrom(acct({ usage: { ...acct().usage, weekly: { pct: 10 } } }), '2026-09-08T17:00:00.000Z');
+  const errored = { ts: '2026-09-08T19:00:00.000Z', account: 'a1', label: 'x', session: null, weekly: null, error: 'fetch_failed' };
+  const m = latestPerAccount([older, r, errored]);
+  assert.equal(m.get('a1').weekly.pct, 61.5);
+});

@@ -7,7 +7,7 @@ import { loadConfig, REFRESH_SKEW_MS } from './config.mjs';
 import { createCredStore, newAccountId } from './credstore.mjs';
 import * as oauthLib from './oauth.mjs';
 import * as usageLib from './usage.mjs';
-import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv } from './history.mjs';
+import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv, usageFromRecord, latestPerAccount } from './history.mjs';
 import { computeFleet } from './fleet.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -195,8 +195,32 @@ export function createServer(deps = {}) {
   const history = deps.history !== undefined ? deps.history
     : (config.historyDir ? createHistory({ dir: config.historyDir, retentionDays: config.historyRetentionDays, log: (m) => console.log(`[history] ${m}`) }) : null);
 
+  // Warm the usage cache from the history log so a restart shows last-known
+  // numbers (tagged "cached") instead of blanks while the startup burst of
+  // upstream calls rides out the 429 cooldown. Seeds are stamped with their
+  // sample time, so they never count as fresh; the first live fetch replaces them.
+  const seedMaxAgeMs = deps.seedMaxAgeMs ?? 24 * 60 * 60_000;
+  const seeded = (async () => {
+    if (!history) return 0;
+    try {
+      const now = Date.now();
+      const latest = latestPerAccount(await history.query({ since: now - seedMaxAgeMs, now, limit: 0 }));
+      let n = 0;
+      for (const [id, r] of latest) {
+        if (usageCache.has(id)) continue;
+        const usage = usageFromRecord(r, thresholds);
+        if (!usage) continue;
+        usageCache.set(id, { usage, fetchedAt: Date.parse(r.ts), seeded: true });
+        n++;
+      }
+      if (n) console.log(`[history] seeded last-known usage for ${n} account(s) from the log`);
+      return n;
+    } catch (e) { console.log(`[history] seed skipped: ${e.message || e}`); return 0; }
+  })();
+
   // The same aggregate GET /api/usage returns; also what the history poller logs.
   const collectUsage = async () => {
+    await seeded;
     const accounts = await credstore.listAccounts();
     const results = await Promise.all(
       accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
@@ -345,7 +369,7 @@ export function createServer(deps = {}) {
   };
 
   const server = http.createServer(handler);
-  return { server, handler, config, credstore, logins, refreshLocks, history, collectUsage };
+  return { server, handler, config, credstore, logins, refreshLocks, history, collectUsage, seeded };
 }
 
 // Entry point when run directly.
