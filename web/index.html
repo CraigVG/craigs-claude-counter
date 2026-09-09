@@ -496,6 +496,7 @@ function renderFleet(accounts){
   if(f.accounts.blocked) legend.push(`<span class="k blocked"><b>${f.accounts.blocked}</b> of ${f.accounts.counted} blocked</span>`);
   if(f.accounts.unknown) legend.push(`<span class="k">${f.accounts.unknown} not counted (no data)</span>`);
   if(f.accounts.weightsAssumed) legend.push(`<span class="k">${f.accounts.weightsAssumed} plan${f.accounts.weightsAssumed===1?'':'s'} unknown, weighted as Max 5x</span>`);
+  legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Max 20x = 2x Max 5x, Max 5x = 3.5x Pro. Session limits act as throttles, not share.">weighted by weekly capacity</span>`);
 
   // Pace: weighted weekly usage vs the elapsed share of each window. The tick
   // on the bar is where usage would sit if the fleet were exactly on pace.

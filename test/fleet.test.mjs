@@ -9,12 +9,14 @@ const win = (pct, h) => ({ pct, resetsAt: pct > 0 && h != null ? at(h) : null })
 const acct = (label, tier, session, weekly, weeklyModels = []) => ({ id: label, label, tier, usage: { session, weekly, weeklyModels } });
 
 test('tierWeight maps plans and flags unknown tiers as assumed', () => {
-  assert.deepEqual(tierWeight('Max 20x'), { weight: 20, assumed: false });
-  assert.deepEqual(tierWeight('Max 5x'), { weight: 5, assumed: false });
+  // Weekly capacity: a 20x week is 2x a 5x week, not 4x (the 4x is the session bucket).
+  assert.deepEqual(tierWeight('Max 20x'), { weight: 7, assumed: false });
+  assert.deepEqual(tierWeight('Max 5x'), { weight: 3.5, assumed: false });
   assert.deepEqual(tierWeight('Pro'), { weight: 1, assumed: false });
-  assert.deepEqual(tierWeight('max_20x_raven'), { weight: 20, assumed: false });
-  assert.deepEqual(tierWeight('default_raven'), { weight: 5, assumed: true });
-  assert.deepEqual(tierWeight(null), { weight: 5, assumed: true });
+  assert.deepEqual(tierWeight('max_20x_raven'), { weight: 7, assumed: false });
+  assert.deepEqual(tierWeight('default_raven'), { weight: 3.5, assumed: true });
+  assert.deepEqual(tierWeight(null), { weight: 3.5, assumed: true });
+  assert.equal(tierWeight('Max 20x').weight / tierWeight('Max 5x').weight, 2);
 });
 
 test('empty fleet yields nulls, not NaN', () => {
@@ -32,10 +34,10 @@ test('effective usage is the binding window, weighted by plan', () => {
     acct('big', 'Max 20x', win(30, 2), win(80, 100)),
     acct('small', 'Max 5x', win(100, 1), win(20, 50)),
   ], { now: NOW });
-  assert.equal(f.weightTotal, 25);
-  // (20*80 + 5*100) / 25 = 84
-  assert.equal(f.usedPct, 84);
-  assert.equal(f.freePct, 16);
+  assert.equal(f.weightTotal, 10.5);
+  // (7*80 + 3.5*100) / 10.5 = 86.67
+  assert.equal(f.usedPct, 86.7);
+  assert.equal(f.freePct, 13.3);
   assert.equal(f.accounts.blocked, 1);
   assert.equal(f.severity, 'warning');
 });
@@ -78,8 +80,8 @@ test('events are sorted soonest first across accounts and scaled to fleet share'
     acct('b', 'Max 5x', win(100, 1), win(0, null)),
   ], { now: NOW });
   assert.deepEqual(f.events.map((e) => e.account), ['b', 'a']);
-  assert.equal(f.events[0].restoresPct, 20); // 5/25
-  assert.equal(f.events[1].restoresPct, 80); // 20/25
+  assert.equal(f.events[0].restoresPct, 33.3); // 3.5/10.5
+  assert.equal(f.events[1].restoresPct, 66.7); // 7/10.5
   assert.equal(f.usedPct, 100);
   assert.equal(f.backSoonPct, 100);
 });

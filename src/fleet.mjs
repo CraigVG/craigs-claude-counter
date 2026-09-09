@@ -3,12 +3,19 @@
 //
 // The model
 // ---------
-// Percentages from different plans are not comparable (a Max 20x weekly bucket
-// is ~4x a Max 5x bucket, ~20x a Pro bucket), so every account is weighted by
-// its plan tier. Within one account the windows are not additive either: the
-// account is blocked by whichever window is highest, so its *effective* usage
-// is max(session, weekly, per-model weekly). Fleet usage is the weighted mean
-// of effective usage; fleet free capacity is the weighted mean of headroom.
+// Percentages from different plans are not comparable, so every account is
+// weighted by its plan's *weekly* capacity: the bar is denominated in "how much
+// work can the fleet do this week". The plan multipliers (5x / 20x) describe the
+// 5-hour session bucket; the weekly buckets are much closer together — a Max
+// 20x week is only about 2x a Max 5x week (observed), and a Max 5x week about
+// 3.5x a Pro week (Anthropic's published hour ranges). Session limits therefore
+// do not change an account's share of the bar; they act as throttles that take
+// the account out of rotation until its session resets.
+//
+// Within one account the windows are not additive either: the account is
+// blocked by whichever window is highest, so its *effective* usage is
+// max(session, weekly, per-model weekly). Fleet usage is the weighted mean of
+// effective usage; fleet free capacity is the weighted mean of headroom.
 //
 // Time is folded in through resets. Both windows drop straight to zero at
 // their reset time (session: 5h after first use; weekly: 7d after first use),
@@ -27,8 +34,13 @@
 
 export const SESSION_MS = 5 * 60 * 60 * 1000;
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-// Plan capacity relative to Pro (Max 5x / Max 20x are Anthropic's own multipliers).
-export const DEFAULT_WEIGHTS = { 'Max 20x': 20, 'Max 5x': 5, Max: 5, Pro: 1, unknown: 5 };
+// Weekly capacity relative to Pro. Max 20x = 2 x Max 5x (observed), Max 5x =
+// 3.5 x Pro (published 140-280 vs 40-80 Sonnet-hours a week). Unknown plans
+// are weighted as Max 5x and flagged. These are the weights the bar uses.
+export const DEFAULT_WEIGHTS = { 'Max 20x': 7, 'Max 5x': 3.5, Max: 3.5, Pro: 1, unknown: 3.5 };
+// The 5-hour session bucket does follow the plan multiplier. Not used for the
+// bar (see the model note above); exported for anyone reasoning about burst rate.
+export const SESSION_WEIGHTS = { 'Max 20x': 20, 'Max 5x': 5, Max: 5, Pro: 1, unknown: 5 };
 // A weekly window this young has too little signal for a pace projection.
 const MIN_PACE_ELAPSED_MS = 2 * 60 * 60 * 1000;
 
@@ -38,11 +50,11 @@ const ms = (iso) => { const t = iso ? new Date(iso).getTime() : NaN; return Numb
 export function tierWeight(tier, weights = DEFAULT_WEIGHTS) {
   if (tier && weights[tier] != null) return { weight: weights[tier], assumed: false };
   const t = String(tier || '').toLowerCase();
-  if (/20x/.test(t)) return { weight: weights['Max 20x'] ?? 20, assumed: false };
-  if (/5x/.test(t)) return { weight: weights['Max 5x'] ?? 5, assumed: false };
-  if (/max/.test(t)) return { weight: weights.Max ?? 5, assumed: false };
+  if (/20x/.test(t)) return { weight: weights['Max 20x'] ?? 7, assumed: false };
+  if (/5x/.test(t)) return { weight: weights['Max 5x'] ?? 3.5, assumed: false };
+  if (/max/.test(t)) return { weight: weights.Max ?? 3.5, assumed: false };
   if (/pro/.test(t)) return { weight: weights.Pro ?? 1, assumed: false };
-  return { weight: weights.unknown ?? 5, assumed: true };
+  return { weight: weights.unknown ?? 3.5, assumed: true };
 }
 
 export function severityFor(pct, warnPct = 70, critPct = 90) {
