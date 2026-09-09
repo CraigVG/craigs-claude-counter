@@ -43,7 +43,7 @@ The app and widget are the same Status Board rendered natively in SwiftUI; they 
 - **Per‑model weekly sub‑limits** (Opus / Sonnet) and **overage** spend, when active
 - Auto‑detected plan tier (Max 20× / Max 5× / Pro)
 - A top summary — how many accounts need attention and the single most‑pressing fact. The board lists the most available account first and the most constrained last
-- A **fleet bar** — every account folded into one capacity‑weighted number (see below), split into what is free now, what comes back within the next 5 hours, and what stays locked until a weekly reset, plus a schedule of the next resets and a weekly burn‑rate check
+- A **fleet bar** (web, macOS app and widget since v1.3.0) — every account folded into one capacity‑weighted number (see below), split into what is free now, what comes back within the next 5 hours, and what stays locked until a weekly reset, plus a schedule of the next resets and a weekly burn‑rate check
 - **Compact mode** — one line per account so many accounts fit without scrolling. Auto‑enabled when the normal rows would overflow the window; pin it either way with the **Compact** button (⌘⇧K in the app). `?demo=many` previews it with 12 fake accounts.
 
 ## The fleet bar (how "total usage" is computed)
