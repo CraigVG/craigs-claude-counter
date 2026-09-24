@@ -131,7 +131,7 @@ xcodebuild -scheme CraigsClaudeCounter -configuration Debug \
   -derivedDataPath build -allowProvisioningUpdates build
 ```
 
-`scripts/release-macos.sh` builds the signed + notarized release DMG.
+`scripts/release-macos.sh` builds the release: the app is signed with a Developer ID, notarized and stapled, then packaged in a DMG that is signed, notarized and stapled too. It picks the Developer ID from the keychain when there is only one (or set `DEVID_IDENTITY`) and notarizes with an App Store Connect API key (`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, or a `NOTARY_ENV` file that exports them) or a `NOTARY_PROFILE` keychain profile. It prints the DMG's SHA‑256 for the Homebrew cask.
 
 ## License
 
