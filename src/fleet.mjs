@@ -14,8 +14,11 @@
 //
 // Within one account the windows are not additive either: the account is
 // blocked by whichever window is highest, so its *effective* usage is
-// max(session, weekly, per-model weekly). Fleet usage is the weighted mean of
-// effective usage; fleet free capacity is the weighted mean of headroom.
+// max(session, weekly). A per-model weekly limit caps only work on that model,
+// so it counts only for the models the fleet actually runs on (FLEET_MODELS);
+// Fable's scoped limit no longer blocks an account that works on Opus. Fleet
+// usage is the weighted mean of effective usage; fleet free capacity is the
+// weighted mean of headroom.
 //
 // Time is folded in through resets. Both windows drop straight to zero at
 // their reset time (session: 5h after first use; weekly: 7d after first use),
@@ -44,6 +47,12 @@ export const DEFAULT_WEIGHTS = { 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Ma
 // The 5-hour session bucket does follow the plan multiplier. Not used for the
 // bar (see the model note above); exported for anyone reasoning about burst rate.
 export const SESSION_WEIGHTS = { 'Max 20x': 20, 'Max 5x': 5, Max: 5, Pro: 1, unknown: 5 };
+// The models the fleet works on. A per-model weekly limit binds an account only
+// if the fleet uses that model, so only these models' scoped limits count
+// (matched case-insensitively against the limit's name, e.g. "Opus 5.5").
+// Fable has its own scoped limit, but the fleet runs on Opus 5.5, which is
+// bounded by the all-models weekly limit alone today.
+export const FLEET_MODELS = ['Opus'];
 // A weekly window this young has too little signal for a pace projection.
 const MIN_PACE_ELAPSED_MS = 2 * 60 * 60 * 1000;
 
@@ -69,19 +78,23 @@ export function severityFor(pct, warnPct = 70, critPct = 90) {
 }
 
 // Per-account breakdown: effective usage, the two relief events, and pace.
-function analyzeAccount(a, { now, weights }) {
+function analyzeAccount(a, { now, weights, models }) {
   const u = a.usage;
   const { weight, assumed } = tierWeight(a.tier, weights);
   const session = u.session && u.session.pct != null ? u.session : null;
   const sPct = session ? Math.max(0, session.pct) : 0;
   const sAt = session && sPct > 0 ? ms(session.resetsAt) : null;
 
-  // The binding weekly-scale window: overall weekly or any per-model weekly.
+  // The binding weekly-scale window: the all-models weekly, or the scoped
+  // weekly of a model the fleet runs on if that one is higher.
   let wPct = u.weekly && u.weekly.pct != null ? Math.max(0, u.weekly.pct) : 0;
   let wAt = wPct > 0 ? ms(u.weekly?.resetsAt) : null;
   let wKind = 'weekly';
   for (const m of u.weeklyModels || []) {
-    if (m && m.pct != null && m.pct > wPct) { wPct = m.pct; wAt = ms(m.resetsAt); wKind = `${m.name} weekly`; }
+    if (!m || m.pct == null || m.pct <= wPct) continue;
+    const name = String(m.name || '').toLowerCase();
+    if (!models.some((f) => name.includes(String(f).toLowerCase()))) continue;
+    wPct = m.pct; wAt = ms(m.resetsAt); wKind = `${m.name} weekly`;
   }
 
   const effective = Math.max(sPct, wPct);
@@ -124,7 +137,7 @@ function analyzeAccount(a, { now, weights }) {
   return { id: a.id, label, tier: a.tier || null, weight, assumed, effective, sessionPct: sPct, weeklyPct: wPct, weeklyKind: wKind, weeklyResetsAt: wAt, events: evs, pace };
 }
 
-export function computeFleet(accounts, { now = Date.now(), weights = DEFAULT_WEIGHTS, warnPct = 70, critPct = 90, soonMs = SESSION_MS } = {}) {
+export function computeFleet(accounts, { now = Date.now(), weights = DEFAULT_WEIGHTS, models = FLEET_MODELS, warnPct = 70, critPct = 90, soonMs = SESSION_MS } = {}) {
   const list = Array.isArray(accounts) ? accounts : [];
   const known = list.filter((a) => a.usage && (a.usage.session || a.usage.weekly));
   const unknown = list.length - known.length;
@@ -136,7 +149,7 @@ export function computeFleet(accounts, { now = Date.now(), weights = DEFAULT_WEI
   };
   if (!known.length) return empty;
 
-  const per = known.map((a) => analyzeAccount(a, { now, weights }));
+  const per = known.map((a) => analyzeAccount(a, { now, weights, models }));
   const W = per.reduce((s, p) => s + p.weight, 0);
   const usedW = per.reduce((s, p) => s + p.weight * Math.min(100, p.effective), 0);
   const blocked = per.filter((p) => p.effective >= 100).length;

@@ -44,10 +44,22 @@ test('effective usage is the binding window, weighted by plan', () => {
   assert.equal(f.severity, 'warning');
 });
 
-test('per-model weekly can be the binding weekly window', () => {
+test('a scoped weekly limit on a model the fleet does not run on is ignored', () => {
+  // Fable at 95% only caps Fable work; the fleet runs on Opus, bound by the 40% all-models weekly.
   const f = computeFleet([acct('a', 'Pro', win(0, null), win(40, 100), [{ name: 'Fable', pct: 95, resetsAt: at(100) }])], { now: NOW });
-  assert.equal(f.usedPct, 95);
-  assert.equal(f.nextWeekly.kind, 'Fable weekly');
+  assert.equal(f.usedPct, 40);
+  assert.equal(f.nextWeekly.kind, 'weekly');
+  assert.equal(f.accounts.blocked, 0);
+});
+
+test('a scoped weekly limit on the fleet model can be the binding weekly window', () => {
+  const f = computeFleet([acct('a', 'Pro', win(0, null), win(40, 100), [{ name: 'Fable', pct: 99, resetsAt: at(100) }, { name: 'Opus 5.5', pct: 90, resetsAt: at(100) }])], { now: NOW });
+  assert.equal(f.usedPct, 90);
+  assert.equal(f.nextWeekly.kind, 'Opus 5.5 weekly');
+  // The fleet's model list is an option, so a switch back to Fable is one argument away.
+  const g = computeFleet([acct('a', 'Pro', win(0, null), win(40, 100), [{ name: 'Fable', pct: 95, resetsAt: at(100) }])], { now: NOW, models: ['Fable'] });
+  assert.equal(g.usedPct, 95);
+  assert.equal(g.nextWeekly.kind, 'Fable weekly');
 });
 
 test('relief events split used capacity into back-soon and locked', () => {
