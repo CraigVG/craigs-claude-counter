@@ -264,6 +264,19 @@ test('GET / serves the dashboard html', async () => {
   } finally { await close(); }
 });
 
+test('GET /fleet.mjs and /board.mjs serve the shared browser modules', async () => {
+  const { base, close } = await boot({ credstore: memStore(), usage: {}, oauth: {} });
+  try {
+    for (const [path, name] of [['/fleet.mjs', 'computeFleet'], ['/board.mjs', 'sortAccounts']]) {
+      const r = await fetch(base + path);
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get('content-type'), /javascript/);
+      assert.match(await r.text(), new RegExp(`export function ${name}`));
+    }
+    assert.equal((await fetch(base + '/server.mjs')).status, 404);
+  } finally { await close(); }
+});
+
 test('/api/history and /api/history/summary serve what the poller logged', async () => {
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');

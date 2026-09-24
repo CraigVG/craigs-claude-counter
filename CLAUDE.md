@@ -9,6 +9,8 @@ Personal tool: a tailnet-private dashboard that aggregates Claude Code **session
 - `src/oauth.mjs` — PKCE login + token refresh (Claude Code public OAuth client)
 - `src/usage.mjs` — fetch/normalize `GET /api/oauth/usage`; fetch profile for labels
 - `src/server.mjs` — `node:http` server + JSON API; `ensureFresh` refresh-on-demand
+- `src/fleet.mjs` — fleet bar math (weights, binding window, relief events, pace); `FLEET_MODELS` names the models whose per-model weekly limits count (Opus)
+- `src/board.mjs` — board order: headroom default + click-to-sort columns; mirrored in `macos/App/BoardSort.swift`
 - `src/history.mjs` — usage history: JSONL day files in `history/`, background poller (`startUsagePoller`), `query`/`summarize`; served at `GET /api/history` and `/api/history/summary`
 - `web/index.html` — self-contained dashboard (vanilla JS/CSS)
 - `bin/claude-usage` — CLI table from the running server; `claude-usage history --since 7d` for trends

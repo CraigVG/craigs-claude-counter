@@ -249,10 +249,11 @@ export function createServer(deps = {}) {
         return res.end(html);
       }
 
-      // The fleet aggregation module, shared with the browser so the page can
-      // recompute countdowns and demo data with the exact server logic.
-      if (req.method === 'GET' && path === '/fleet.mjs') {
-        const js = await readFile(join(__dirname, 'fleet.mjs'), 'utf8');
+      // The fleet aggregation and board ordering modules, shared with the
+      // browser so the page recomputes countdowns, demo data and column sorts
+      // with the exact server logic.
+      if (req.method === 'GET' && (path === '/fleet.mjs' || path === '/board.mjs')) {
+        const js = await readFile(join(__dirname, path.slice(1)), 'utf8');
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
         return res.end(js);
       }

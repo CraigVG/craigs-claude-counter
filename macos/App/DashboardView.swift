@@ -33,9 +33,14 @@ struct BoardLayout {
 struct DashboardView: View {
     @ObservedObject var model: CounterModel
     @AppStorage(Density.storageKey) private var densityRaw = Density.auto.rawValue
+    @AppStorage(BoardSort.storageKey) private var sortRaw = BoardSort.headroom.raw
+    @State private var hoverColumn: SortColumn?
+
+    /// Headroom (most available on top) unless a column header was clicked.
+    private var sort: BoardSort { BoardSort(raw: sortRaw) }
 
     private var accounts: [AccountDTO] {
-        (model.snapshot?.accounts ?? []).sorted { $0.sortKey < $1.sortKey }   // most available on top
+        sort.sorted(model.snapshot?.accounts ?? [])
     }
 
     private var density: Density { Density(rawValue: densityRaw) ?? .auto }
@@ -166,20 +171,36 @@ struct DashboardView: View {
     private func boardHeader(_ layout: BoardLayout) -> some View {
         HStack(spacing: layout.gap) {
             Color.clear.frame(width: layout.tick)
-            headCell("ACCOUNT", align: .leading).frame(maxWidth: .infinity, alignment: .leading)
-            headCell("PLAN").frame(width: layout.plan, alignment: .leading)
-            headCell("SESSION · 5H").frame(width: layout.metric, alignment: .leading)
-            headCell("WEEKLY").frame(width: layout.metric, alignment: .leading)
-            headCell("MODEL WK").frame(width: layout.model, alignment: .leading)
-            headCell("OVERAGE").frame(width: layout.over, alignment: .leading)
+            headCell("ACCOUNT", .account).frame(maxWidth: .infinity, alignment: .leading)
+            headCell("PLAN", .plan).frame(width: layout.plan, alignment: .leading)
+            headCell("SESSION · 5H", .session).frame(width: layout.metric, alignment: .leading)
+            headCell("WEEKLY", .weekly).frame(width: layout.metric, alignment: .leading)
+            headCell("MODEL WK", .model).frame(width: layout.model, alignment: .leading)
+            headCell("OVERAGE", .overage).frame(width: layout.over, alignment: .leading)
             Color.clear.frame(width: layout.action)
         }
         .padding(.horizontal, 16).padding(.vertical, layout.headVPad)
         .overlay(Rectangle().fill(Theme.hair).frame(height: 1), alignment: .bottom)
     }
 
-    private func headCell(_ s: String, align: Alignment = .leading) -> some View {
-        Text(s).font(Theme.mono(10.5, .medium)).foregroundColor(Theme.ink3).tracking(1.0)
+    /// A clickable column header: first click sorts by it, second reverses,
+    /// third returns to headroom. The arrow shows the active direction.
+    private func headCell(_ s: String, _ column: SortColumn) -> some View {
+        let on = sort.column == column
+        let hover = hoverColumn == column
+        return Button { sortRaw = sort.next(tapping: column).raw } label: {
+            HStack(spacing: 5) {
+                Text(s).font(Theme.mono(10.5, .medium)).tracking(1.0)
+                    .foregroundColor(on ? Theme.ink : (hover ? Theme.ink2 : Theme.ink3))
+                Text(on && !sort.ascending ? "▼" : "▲").font(.system(size: 7))
+                    .foregroundColor(on ? Theme.accent : Theme.ink3)
+                    .opacity(on ? 1 : (hover ? 0.5 : 0))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hoverColumn = $0 ? column : (hoverColumn == column ? nil : hoverColumn) }
+        .help(on ? "\(column.help) (sorted \(sort.ascending ? "ascending" : "descending"))" : column.help)
     }
 
     private func legend(narrow: Bool) -> some View {
@@ -194,7 +215,14 @@ struct DashboardView: View {
                 legendKey(Theme.warn, "warning 70–89%")
                 legendKey(Theme.alarm, "at limit ≥90%")
                 Spacer()
-                Text("sorted by headroom · most available on top")
+                Text(sort.note)
+                if sort != .headroom {
+                    Button { sortRaw = BoardSort.headroom.raw } label: {
+                        Text("sort by headroom").underline()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(Theme.ink3)
+                }
             }
         }
         .font(Theme.mono(11, .regular)).foregroundColor(Theme.ink4)

@@ -122,6 +122,15 @@
   }
   .head { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--hair); }
   .head > div { padding: 13px 16px; }
+  .head .sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: inherit; white-space: nowrap; border-radius: 4px; transition: color .12s; }
+  .head .sort:hover { color: var(--ink-2); }
+  .head .sort.on { color: var(--ink); }
+  .head .sort .arr { font-size: 9px; width: 8px; opacity: 0; }
+  .head .sort:hover .arr { opacity: .5; }
+  .head .sort.on .arr { opacity: 1; color: var(--accent); }
+  .head .sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .foot .sortnote button { all: unset; cursor: pointer; color: var(--ink-3); text-decoration: underline; text-underline-offset: 2px; }
+  .foot .sortnote button:hover { color: var(--ink-2); }
 
   .row { border-bottom: 1px solid var(--hair-soft); transition: background .12s ease; position: relative; }
   .row:last-child { border-bottom: none; }
@@ -324,12 +333,12 @@
       <div class="board-scroll">
         <div class="grid head">
           <div class="tick"></div>
-          <div>Account</div>
-          <div>Plan</div>
-          <div>Session&nbsp;&middot;&nbsp;5h</div>
-          <div>Weekly</div>
-          <div>Model&nbsp;wk</div>
-          <div>Overage</div>
+          <div><button class="sort" type="button" data-sort="account" title="Sort by account name">Account<span class="arr" aria-hidden="true"></span></button></div>
+          <div><button class="sort" type="button" data-sort="plan" title="Sort by plan (weekly capacity)">Plan<span class="arr" aria-hidden="true"></span></button></div>
+          <div><button class="sort" type="button" data-sort="session" title="Sort by session usage">Session&nbsp;&middot;&nbsp;5h<span class="arr" aria-hidden="true"></span></button></div>
+          <div><button class="sort" type="button" data-sort="weekly" title="Sort by weekly usage">Weekly<span class="arr" aria-hidden="true"></span></button></div>
+          <div><button class="sort" type="button" data-sort="model" title="Sort by per-model weekly usage">Model&nbsp;wk<span class="arr" aria-hidden="true"></span></button></div>
+          <div><button class="sort" type="button" data-sort="overage" title="Sort by overage spent">Overage<span class="arr" aria-hidden="true"></span></button></div>
           <div></div>
         </div>
         <div id="rows"></div>
@@ -345,7 +354,7 @@
       <span class="key"><span class="swatch" style="background:var(--warn)"></span> warning 70&ndash;89%</span>
       <span class="key"><span class="swatch" style="background:var(--alarm)"></span> at limit &ge;90%</span>
       <span style="flex:1"></span>
-      <span>sorted by headroom &middot; most available on top</span>
+      <span class="sortnote" id="sortnote">sorted by headroom &middot; most available on top</span>
     </div>
   </div>
 
@@ -358,6 +367,7 @@
 
 <script type="module">
 import { computeFleet } from '/fleet.mjs';
+import { sortAccounts, nextSort, parseSort, SORT_COLUMNS, DEFAULT_SORT } from '/board.mjs';
 const $ = (s) => document.querySelector(s);
 let latest = null;
 let lastError = null;
@@ -378,18 +388,34 @@ function resetText(iso){ const t = shortDur(iso); return t==='now' ? 'resetting�
 // severity buckets — color is a signal only
 function sevOf(pct){ if(pct == null) return 'idle'; if(pct >= 90) return 'alarm'; if(pct >= 70) return 'warn'; if(pct <= 0) return 'idle'; return 'normal'; }
 const sevCls = (sev) => sev==='alarm' ? 'is-alarm' : sev==='warn' ? 'is-warn' : sev==='idle' ? 'is-idle' : '';
-function worstPct(a){ if(!a.usage) return 0; return Math.max(a.usage.session?.pct ?? 0, a.usage.weekly?.pct ?? 0); }
-// Tiered by constraint: at-limit (>=90), then needs-relogin, then warnings, then by usage, idle.
-// The board sorts ascending — most available on top, most constrained at the bottom;
-// the summary strip still calls out the worst one.
-function sortKey(a){
-  const worst = worstPct(a);
-  let tier = 0;
-  if(a.usage && worst >= 90) tier = 3;
-  else if(a.error === 'needs_relogin') tier = 2;
-  else if(a.usage && worst >= 70) tier = 1;
-  return tier * 1000 + worst;
+
+// ---- board order: headroom by default (most available on top), or a column ----
+// Clicking a header sorts by it (usage columns lowest first, plan and overage
+// largest first), clicking again reverses, a third click returns to headroom.
+// The choice is kept in localStorage. Logic lives in src/board.mjs.
+const SORT_KEY = 'ccc.sort';
+let sort = DEFAULT_SORT;
+try { sort = parseSort(localStorage.getItem(SORT_KEY)); } catch {}
+function setSort(next){
+  sort = next;
+  try { localStorage.setItem(SORT_KEY, `${sort.key}:${sort.dir}`); } catch {}
+  render();
 }
+function renderSortUi(){
+  document.querySelectorAll('.head .sort').forEach(b => {
+    const on = b.dataset.sort === sort.key;
+    b.classList.toggle('on', on);
+    b.querySelector('.arr').textContent = on ? (sort.dir === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2';
+    b.setAttribute('aria-label', `${b.title}${on ? `, sorted ${sort.dir === 'asc' ? 'ascending' : 'descending'}` : ''}`);
+  });
+  const note = $('#sortnote');
+  if(sort.key === 'headroom'){ note.innerHTML = 'sorted by headroom &middot; most available on top'; return; }
+  const col = SORT_COLUMNS[sort.key];
+  const text = sort.key === 'account' ? (sort.dir === 'asc' ? 'A&ndash;Z' : 'Z&ndash;A') : (sort.dir === 'asc' ? 'lowest first' : 'highest first');
+  note.innerHTML = `sorted by ${esc(col.label)} &middot; ${text} &middot; <button type="button" id="sort-reset">sort by headroom</button>`;
+  $('#sort-reset').onclick = () => setSort(DEFAULT_SORT);
+}
+document.querySelectorAll('.head .sort').forEach(b => b.onclick = () => setSort(nextSort(sort, b.dataset.sort)));
 
 function metricCell(w, kind){
   const lbl = `<span class="clabel">${kind === 'session' ? 'Session &middot; 5h' : 'Weekly'}</span>`;
@@ -496,7 +522,7 @@ function renderFleet(accounts){
   if(f.accounts.blocked) legend.push(`<span class="k blocked"><b>${f.accounts.blocked}</b> of ${f.accounts.counted} blocked</span>`);
   if(f.accounts.unknown) legend.push(`<span class="k">${f.accounts.unknown} not counted (no data)</span>`);
   if(f.accounts.weightsAssumed) legend.push(`<span class="k">${f.accounts.weightsAssumed} plan${f.accounts.weightsAssumed===1?'':'s'} unknown, weighted as the 5x class</span>`);
-  legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Max 20x = 2x the 5x class (Max 5x and Team 5x seats), 5x = 3.5x Pro. Session limits act as throttles, not share.">weighted by weekly capacity</span>`);
+  legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Max 20x = 2x the 5x class (Max 5x and Team 5x seats), 5x = 3.5x Pro. Session limits act as throttles, not share. Each account counts its session and all-models weekly limit; per-model weekly limits (Fable) cap only that model, so they count only for Opus, the model the fleet runs on.">weighted by weekly capacity</span>`);
 
   // Pace: weighted weekly usage vs the elapsed share of each window. The tick
   // on the bar is where usage would sit if the fleet were exactly on pace.
@@ -575,7 +601,7 @@ function buildSummary(accounts){
 
 function render(){
   if(!latest) return;
-  const accounts = [...(latest.accounts || [])].sort((a, b) => sortKey(a) - sortKey(b));
+  const accounts = sortAccounts(latest.accounts || [], sort, latest.thresholds);
   const has = accounts.length > 0;
   $('#board').style.display = has ? 'block' : 'none';
   $('#foot').style.display = has ? 'flex' : 'none';
@@ -585,6 +611,7 @@ function render(){
   if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); renderFleet(accounts); buildSummary(accounts); }
   else { $('#fleet').style.display = 'none'; $('#summary').style.display = 'none'; }
   updateFreshness();
+  renderSortUi();
   applyDensity();
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeAccount(b.dataset.del, b.dataset.label));
   document.querySelectorAll('[data-relogin]').forEach(b => b.onclick = () => addAccount(b.dataset.relogin, b.dataset.label));
