@@ -97,6 +97,10 @@ struct CCCWidgetView: View {
                 Text("All clear").font(Theme.ui(17, .semibold)).foregroundColor(Theme.ok)
             }
             Spacer()
+            if let b = entry.fleet?.bankedResets, b.left > 0 {
+                Text("↺ \(b.left) reset\(b.left == 1 ? "" : "s") banked")
+                    .font(Theme.mono(10, .regular)).foregroundColor(Theme.ok)
+            }
             Text(attn > 0 ? "\(attn) need attention" : "\(entry.accounts.count) healthy")
                 .font(Theme.mono(10, .regular)).foregroundColor(Theme.ink3)
         }
@@ -167,6 +171,10 @@ struct WFleet: View {
                     Text("·").foregroundColor(Theme.ink4)
                     Text("+\(Int(s.rounded()))% within \(f.soonHours)h").foregroundColor(Theme.ink3)
                 }
+                if let b = f.bankedResets, b.left > 0 {
+                    Text("·").foregroundColor(Theme.ink4)
+                    Text("↺ \(b.left)").foregroundColor(Theme.ok)
+                }
                 if let r = f.pace.ratio {
                     Spacer(minLength: 4)
                     Text(String(format: "%.1f× pace", r)).foregroundColor(r >= 1.15 ? Theme.warn : Theme.ink3)
@@ -183,8 +191,15 @@ struct WRow: View {
     var body: some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5).fill(tickColor).frame(width: 3, height: 22)
-            Text(a.name).font(Theme.ui(12, .medium)).foregroundColor(Theme.ink).lineLimit(1).truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 5) {
+                Text(a.name).font(Theme.ui(12, .medium)).foregroundColor(Theme.ink).lineLimit(1).truncationMode(.middle)
+                if let left = a.usage?.bankedResets?.left, left > 0 {
+                    // A banked reset can refill this account's limits on demand.
+                    Text(left == 1 ? "↺" : "↺\(left)").font(Theme.mono(10.5, .semibold)).foregroundColor(Theme.ok)
+                        .fixedSize()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             metric(a.usage?.session)
             metric(a.usage?.weekly)
         }
@@ -232,7 +247,8 @@ enum CCCSample {
     static var accounts: [AccountDTO] {
         [
             AccountDTO(id: "s1", label: "ops@example.com", tier: "Max 20x",
-                       usage: UsageDTO(session: win(100, 52), weekly: win(61, 3300), weeklyModels: [mdl("Fable", 22, 3300)], overage: nil),
+                       usage: UsageDTO(session: win(100, 52), weekly: win(61, 3300), weeklyModels: [mdl("Fable", 22, 3300)], overage: nil,
+                                       bankedResets: BankedResetsDTO(left: 1, total: 1, usableNow: true, nextExpiresAt: nil, grants: nil)),
                        error: nil, message: nil, stale: nil, status: nil),
             AccountDTO(id: "s2", label: "team@acme.dev", tier: "Max 5x",
                        usage: UsageDTO(session: win(78, 120), weekly: win(44, 5400), weeklyModels: nil, overage: nil),
