@@ -1,5 +1,5 @@
 // Fetch and normalize the Claude Code subscription usage endpoint.
-import { USAGE_URL, PROFILE_URL, ANTHROPIC_BETA, USER_AGENT } from './config.mjs';
+import { USAGE_RESETS_URL, PROFILE_URL, ANTHROPIC_BETA, USER_AGENT, CLI_USER_AGENT } from './config.mjs';
 
 // Map an Anthropic rate_limit_tier to a short, friendly plan name.
 export function prettyTier(rateLimitTier, orgType) {
@@ -92,6 +92,43 @@ function weeklyModelsFrom(raw, thresholds) {
   return models;
 }
 
+// Banked limit resets: one-off grants (e.g. a model-launch reset) that refill
+// the session/weekly limits when claimed from Claude Code. The raw block is
+// `cedar_ember`; it is null unless asked for (see USAGE_RESETS_URL). Returns
+// null when absent, so "not reported" and "none banked" stay distinguishable.
+// `left` sums every live grant; expired grants are dropped.
+export function bankedResetsFrom(raw, now = Date.now()) {
+  const ce = raw?.cedar_ember;
+  if (!ce || typeof ce !== 'object') return null;
+  const grants = (Array.isArray(ce.grants) ? ce.grants : [])
+    .filter((g) => g && Number.isInteger(g.resets_left))
+    .map((g) => ({
+      id: String(g.id ?? ''),
+      label: g.label || '',
+      left: g.resets_left,
+      total: Number.isInteger(g.resets_total) ? g.resets_total : g.resets_left,
+      startsAt: g.starts_at ?? null,
+      endsAt: g.ends_at ?? null,
+      clears: Array.isArray(g.clears) ? g.clears : [],
+      paused: !!g.paused,
+      usableNow: !!g.usable_now,
+      useRequiresLimit: g.use_requires_limit !== false,
+    }))
+    .filter((g) => !g.endsAt || Date.parse(g.endsAt) > now);
+  const live = grants.filter((g) => g.left > 0);
+  const ends = live.map((g) => g.endsAt).filter(Boolean).sort();
+  return {
+    eligible: !!ce.eligible,
+    ineligibleReason: ce.ineligible_reason ?? null,
+    left: live.reduce((n, g) => n + g.left, 0),
+    total: grants.reduce((n, g) => n + g.total, 0),
+    usableNow: live.some((g) => g.usableNow && !g.paused),
+    nextExpiresAt: ends[0] || null,
+    cooldownUntil: ce.cooldown_until ?? null,
+    grants,
+  };
+}
+
 // Turn the raw /api/oauth/usage JSON into a stable, UI-friendly shape.
 export function normalizeUsage(raw, thresholds = { warnPct: 70, critPct: 90 }) {
   const session = windowFrom(
@@ -135,17 +172,17 @@ export function normalizeUsage(raw, thresholds = { warnPct: 70, critPct: 90 }) {
     };
   }
 
-  return { session, weekly, weeklyModels, weeklyOpus, weeklySonnet, overage };
+  return { session, weekly, weeklyModels, weeklyOpus, weeklySonnet, overage, bankedResets: bankedResetsFrom(raw) };
 }
 
 // Fetch live usage for one access token. `fetchImpl` is injectable for tests.
 export async function fetchUsage(accessToken, { fetchImpl = fetch, thresholds } = {}) {
-  const res = await fetchImpl(USAGE_URL, {
+  const res = await fetchImpl(USAGE_RESETS_URL, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'anthropic-beta': ANTHROPIC_BETA,
-      'User-Agent': USER_AGENT,
+      'User-Agent': CLI_USER_AGENT,
     },
   });
   if (!res.ok) {

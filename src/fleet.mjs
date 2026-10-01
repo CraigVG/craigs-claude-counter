@@ -141,11 +141,15 @@ export function computeFleet(accounts, { now = Date.now(), weights = DEFAULT_WEI
   const list = Array.isArray(accounts) ? accounts : [];
   const known = list.filter((a) => a.usage && (a.usage.session || a.usage.weekly));
   const unknown = list.length - known.length;
+  // Banked resets are a separate pool from capacity: they refill a limit on demand.
+  const banked = list.filter((a) => a.usage && a.usage.bankedResets && a.usage.bankedResets.left > 0)
+    .map((a) => ({ account: a.label || a.id, left: a.usage.bankedResets.left, nextExpiresAt: a.usage.bankedResets.nextExpiresAt || null }));
+  const bankedResets = { left: banked.reduce((n, b) => n + b.left, 0), accounts: banked };
   const empty = {
     accounts: { total: list.length, counted: 0, unknown, blocked: 0, weightsAssumed: 0 },
     weightTotal: 0, usedPct: null, freePct: null, backSoonPct: null, lockedPct: null, severity: 'unknown',
     soonMs, events: [], nextEvent: null, nextWeekly: null, freshBy: null,
-    pace: { ratio: null, accounts: 0, exhausting: [] }, perAccount: [], now: new Date(now).toISOString(),
+    pace: { ratio: null, accounts: 0, exhausting: [] }, bankedResets, perAccount: [], now: new Date(now).toISOString(),
   };
   if (!known.length) return empty;
 
@@ -190,6 +194,7 @@ export function computeFleet(accounts, { now = Date.now(), weights = DEFAULT_WEI
       accounts: paced.length,
       exhausting,
     },
+    bankedResets,
     perAccount: per.map((p) => ({ id: p.id, label: p.label, tier: p.tier, weight: p.weight, weightAssumed: p.assumed, effectivePct: pct1(p.effective), sharePct: pct1((100 * p.weight) / W), paceRatio: p.pace && p.pace.ratio != null ? Math.round(p.pace.ratio * 100) / 100 : null })),
     now: new Date(now).toISOString(),
   };

@@ -20,6 +20,7 @@ Personal tool: a tailnet-private dashboard that aggregates Claude Code **session
 - Usage endpoint: `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`). Returns `limits[]` (kinds `session`/`weekly_all`/`weekly_scoped`), legacy `five_hour`/`seven_day`, `spend`/`extra_usage`.
 - OAuth (from Claude Code CLI bundle): client_id `9d1c250a-e61b-44d9-88ed-5944d1962f5e`, authorize `https://claude.ai/oauth/authorize`, token `https://platform.claude.com/v1/oauth/token`, redirect `https://platform.claude.com/oauth/code/callback` (manual code paste, `code#state`), PKCE S256.
 - Tokens live ONLY in macOS Keychain (service `claude-usage-dashboard`). Never log or write them to disk.
+- Banked limit resets: the usage call is `GET /api/oauth/usage?cedar_ember=1` with a `claude-cli/<ver> (external, cli)` User-Agent (`CLI_USER_AGENT`, override `CLAUDE_USAGE_CLI_UA`). Any other UA gets `cedar_ember.ineligible_reason: "surface"` and no grants. Normalized to `usage.bankedResets` (`bankedResetsFrom`), totalled in `fleet.bankedResets`, logged as `banked` in history. Read-only: claiming is a separate `POST /api/organizations/{org}/reset_rate_limits` the dashboard never calls. `juniper_tide` (a session-reset experiment) only comes back with `?at_wall=1` and is not shown.
 - Profile endpoint `GET /api/oauth/profile` gives `account.email` + `organization.rate_limit_tier` (→ pretty tier).
 
 - History records hold labels, tiers and percentages only. Never log tokens there.

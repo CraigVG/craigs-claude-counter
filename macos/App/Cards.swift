@@ -1,5 +1,19 @@
 import SwiftUI
 
+/// "↺ 1 RESET" tag for an account holding banked limit resets; details on hover.
+struct BankedResetsTag: View {
+    let resets: BankedResetsDTO?
+    var body: some View {
+        if let r = resets, r.left > 0 {
+            Text("↺ \(r.left) RESET\(r.left == 1 ? "" : "S")")
+                .font(Theme.mono(9.5, .medium)).foregroundColor(Theme.ok).tracking(0.5)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.ok.opacity(0.5), lineWidth: 1))
+                .help(r.helpText)
+        }
+    }
+}
+
 /// Stacked card for one account — used when the window is too narrow for the table.
 struct AccountCard: View {
     let a: AccountDTO
@@ -25,6 +39,7 @@ struct AccountCard: View {
                                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.hair, lineWidth: 1))
                         }
                         statusTag
+                        BankedResetsTag(resets: a.usage?.bankedResets)
                     }
                 }
                 Spacer()

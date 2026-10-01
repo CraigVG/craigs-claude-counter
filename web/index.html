@@ -151,6 +151,8 @@
   .tag { white-space: nowrap; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--hair); color: var(--ink-3); }
   .tag.cached { color: var(--warn); border-color: rgba(217,162,58,0.45); }
   .tag.relogin { color: var(--alarm); border-color: var(--alarm-edge); }
+  .tag.banked { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); cursor: help; }
+  .fleet-legend .banked b { color: var(--ok); }
 
   .plan .pill { display: inline-block; font-family: var(--mono); font-size: 11.5px; border: 1px solid var(--hair); border-radius: 5px; padding: 3px 8px; color: var(--ink-2); background: var(--panel-2); white-space: nowrap; }
 
@@ -458,6 +460,21 @@ function overageCell(u){
   return `<div class="overage">${lbl}<span class="none">no overage</span></div>`;
 }
 
+// Banked limit resets: a tag on the account, details in its tooltip.
+function grantLine(g){
+  const by = g.endsAt ? `, use by ${fmtDay(g.endsAt)}` : '';
+  const when = g.paused ? 'paused' : g.usableNow ? 'usable now' : g.useRequiresLimit ? 'usable at a limit' : 'not usable yet';
+  return `${g.label || 'Reset'}: ${g.left} of ${g.total} left${by} (${when})`;
+}
+function resetsTag(u){
+  const r = u && u.bankedResets;
+  if(!r || !(r.left > 0)) return '';
+  const lines = (r.grants || []).filter(g => g.left > 0).map(grantLine);
+  if(!lines.length && r.nextExpiresAt) lines.push(`use by ${fmtDay(r.nextExpiresAt)}`);
+  lines.push('Refills your limits when used from Claude Code.');
+  return `<span class="tag banked" title="${esc(lines.join('\n'))}">&#x21BA; ${r.left} reset${r.left === 1 ? '' : 's'}</span>`;
+}
+
 function rowFor(a){
   const isRelogin = a.error === 'needs_relogin';
   const isErrored = a.error && !isRelogin;
@@ -474,6 +491,8 @@ function rowFor(a){
   if(isRelogin) tags.push(`<span class="tag relogin">needs re-login</span>`);
   else if(a.stale) tags.push(`<span class="tag cached" title="${esc(a.message||'showing last-known data')}">cached</span>`);
   else if(isErrored) tags.push(`<span class="tag" title="${esc(a.message||a.error)}">unavailable</span>`);
+  const banked = resetsTag(u);
+  if(banked) tags.push(banked);
 
   const session = isErrored && !u ? null : (u && u.session);
   const weekly  = isErrored && !u ? null : (u && u.weekly);
@@ -520,6 +539,11 @@ function renderFleet(accounts){
   ];
   if(f.pace.ratio != null) legend.push(`<span class="k"><span class="sw mark"></span>sustainable pace</span>`);
   if(f.accounts.blocked) legend.push(`<span class="k blocked"><b>${f.accounts.blocked}</b> of ${f.accounts.counted} blocked</span>`);
+  if(f.bankedResets && f.bankedResets.left){
+    const n = f.bankedResets.left, m = f.bankedResets.accounts.length;
+    const t = f.bankedResets.accounts.map(b => `${b.account}: ${b.left}${b.nextExpiresAt ? `, use by ${fmtDay(b.nextExpiresAt)}` : ''}`).join('\n');
+    legend.push(`<span class="k banked" title="${esc(t)}">&#x21BA; <b>${n}</b> banked reset${n===1?'':'s'} on ${m} account${m===1?'':'s'}</span>`);
+  }
   if(f.accounts.unknown) legend.push(`<span class="k">${f.accounts.unknown} not counted (no data)</span>`);
   if(f.accounts.weightsAssumed) legend.push(`<span class="k">${f.accounts.weightsAssumed} plan${f.accounts.weightsAssumed===1?'':'s'} unknown, weighted as the 5x class</span>`);
   legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Max 20x = 2x the 5x class (Max 5x and Team 5x seats), 5x = 3.5x Pro. Session limits act as throttles, not share. Each account counts its session and all-models weekly limit; per-model weekly limits (Fable) cap only that model, so they count only for Opus, the model the fleet runs on.">weighted by weekly capacity</span>`);
@@ -676,8 +700,9 @@ function demoData(){
   const at = (mins) => new Date(now + mins*60000).toISOString();
   const win = (pct, mins) => ({ pct, resetsAt: pct>0 ? at(mins) : null, severity: 'normal' });
   const mdl = (name, pct, mins) => ({ name, pct, resetsAt: pct>0 ? at(mins) : null, severity: 'normal' });
+  const banked = (left) => ({ left, total: 1, usableNow: true, nextExpiresAt: at(30240), grants: [{ id:'demo', label:'Launch reset', left, total: 1, endsAt: at(30240), usableNow: true, useRequiresLimit: false, paused: false }] });
   const accounts = [
-    { id:'d1', label:'ops@example.com',    tier:'Max 20x', usage:{ session:win(100,52), weekly:win(61,3300), weeklyModels:[mdl('Fable',22,3300)], overage:null } },
+    { id:'d1', label:'ops@example.com',    tier:'Max 20x', usage:{ session:win(100,52), weekly:win(61,3300), weeklyModels:[mdl('Fable',22,3300)], overage:null, bankedResets:banked(1) } },
     { id:'d2', label:'team@acme.dev',      tier:'Max 5x',  usage:{ session:win(78,128), weekly:win(44,5400), weeklyModels:[mdl('Fable',30,5400)], overage:null } },
     { id:'d3', label:'you@example.com',    tier:'Max 20x', usage:{ session:win(22,176), weekly:win(38,3180), weeklyModels:[mdl('Fable',12,3180)], overage:{enabled:true, usedUsd:128.40, limitUsd:1000, pct:13} } },
     { id:'d4', label:'legacy@example.org', tier:'Pro',     error:'needs_relogin' },

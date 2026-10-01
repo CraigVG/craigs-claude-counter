@@ -131,3 +131,14 @@ test('soon horizon defaults to one session length', () => {
   assert.equal(f.backSoonPct, 0);
   assert.equal(f.lockedPct, 50);
 });
+
+test('banked resets are totalled across accounts, separately from capacity', () => {
+  const a = acct('a', 'Max 20x', win(50, 2), win(40, 50));
+  a.usage.bankedResets = { left: 1, total: 1, nextExpiresAt: at(500) };
+  const b = acct('b', 'Max 5x', win(10, 2), win(10, 50));
+  b.usage.bankedResets = { left: 0, total: 1, nextExpiresAt: null };
+  const c = acct('c', 'Pro', win(10, 2), win(10, 50));
+  const f = computeFleet([a, b, c], { now: NOW });
+  assert.deepEqual(f.bankedResets, { left: 1, accounts: [{ account: 'a', left: 1, nextExpiresAt: at(500) }] });
+  assert.deepEqual(computeFleet([], { now: NOW }).bankedResets, { left: 0, accounts: [] });
+});

@@ -45,6 +45,14 @@ struct FleetDTO: Decodable {
     var nextWeekly: Event?
     var freshBy: String?
     var pace: Pace
+    /// Banked limit resets across the fleet (absent from engines before banked-reset support).
+    var bankedResets: BankedFleet?
+
+    struct BankedFleet: Decodable {
+        struct Holder: Decodable { var account: String; var left: Int; var nextExpiresAt: String? }
+        var left: Int
+        var accounts: [Holder]
+    }
 
     var tone: Severity {
         switch severity { case "critical": return .alarm; case "warning": return .warn; default: return .normal }
@@ -98,6 +106,43 @@ struct UsageDTO: Decodable {
     // the engine surfaces rather than hardcoding names.
     var weeklyModels: [ModelLimitDTO]?
     var overage: OverageDTO?
+    /// Banked limit resets (one-off grants that refill limits when used from Claude Code).
+    var bankedResets: BankedResetsDTO? = nil
+}
+
+struct BankedResetsDTO: Decodable {
+    struct Grant: Decodable {
+        var id: String
+        var label: String?
+        var left: Int
+        var total: Int?
+        var endsAt: String?
+        var usableNow: Bool?
+        var useRequiresLimit: Bool?
+        var paused: Bool?
+    }
+    var left: Int
+    var total: Int?
+    var usableNow: Bool?
+    var nextExpiresAt: String?
+    var grants: [Grant]?
+
+    /// Tooltip: one line per live grant, matching the web board's wording.
+    var helpText: String {
+        var lines = (grants ?? []).filter { $0.left > 0 }.map { g -> String in
+            let by = g.endsAt.flatMap(BankedResetsDTO.day).map { ", use by \($0)" } ?? ""
+            let when = g.paused == true ? "paused" : g.usableNow == true ? "usable now"
+                : g.useRequiresLimit != false ? "usable at a limit" : "not usable yet"
+            return "\(g.label ?? "Reset"): \(g.left) of \(g.total ?? g.left) left\(by) (\(when))"
+        }
+        if lines.isEmpty, let d = nextExpiresAt.flatMap(BankedResetsDTO.day) { lines.append("use by \(d)") }
+        lines.append("Refills your limits when used from Claude Code.")
+        return lines.joined(separator: "\n")
+    }
+
+    static func day(_ iso: String) -> String? {
+        TimeFmt.parse(iso)?.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
 }
 
 struct WindowDTO: Decodable {

@@ -29,6 +29,14 @@ export const PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile';
 export const ANTHROPIC_BETA = 'oauth-2025-04-20';
 export const USER_AGENT = 'craigs-claude-counter/1.0 (+tailnet)';
 
+// Banked limit resets ("cedar_ember" in the payload) only come back when the
+// usage call asks for them (?cedar_ember=1) AND the caller identifies as the
+// Claude Code CLI: any other User-Agent gets `ineligible_reason: "surface"`
+// and no grants. Same query + UA format the CLI uses (2.1.286). The server may
+// also gate on CLI version, so CLAUDE_USAGE_CLI_UA overrides it if that bites.
+export const USAGE_RESETS_URL = `${USAGE_URL}?cedar_ember=1`;
+export const CLI_USER_AGENT = process.env.CLAUDE_USAGE_CLI_UA || 'claude-cli/2.1.286 (external, cli)';
+
 // Keychain service name; every account is one generic-password under it.
 // NOTE: kept as 'claude-usage-dashboard' (the project's original name) so existing
 // installs keep their stored tokens across the rename. Override with CLAUDE_USAGE_KEYCHAIN.

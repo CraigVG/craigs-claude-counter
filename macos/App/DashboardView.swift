@@ -294,10 +294,11 @@ struct AccountRowView: View {
     @ViewBuilder private var account: some View {
         let name = Text(a.name).font(Theme.ui(layout.compact ? 13 : 14, .medium)).foregroundColor(Theme.ink)
             .lineLimit(1).truncationMode(.tail)
+        let tags = HStack(spacing: 6) { statusTag; BankedResetsTag(resets: a.usage?.bankedResets) }
         if layout.compact {
-            HStack(spacing: 8) { name; statusTag }
+            HStack(spacing: 8) { name; tags }
         } else {
-            VStack(alignment: .leading, spacing: 4) { name; statusTag }
+            VStack(alignment: .leading, spacing: 4) { name; tags }
         }
     }
 
@@ -589,6 +590,13 @@ struct FleetBar: View {
                     Text("\(fleet.accounts.blocked)").foregroundColor(Theme.alarm).fontWeight(.semibold)
                     Text("of \(fleet.accounts.counted) blocked").foregroundColor(Theme.ink3)
                 }
+            }
+            if let b = fleet.bankedResets, b.left > 0 {
+                HStack(spacing: 4) {
+                    Text("↺ \(b.left)").foregroundColor(Theme.ok).fontWeight(.semibold)
+                    Text("banked reset\(b.left == 1 ? "" : "s")").foregroundColor(Theme.ink3)
+                }
+                .help(b.accounts.map { h in "\(h.account): \(h.left)" + (h.nextExpiresAt.flatMap(BankedResetsDTO.day).map { ", use by \($0)" } ?? "") }.joined(separator: "\n"))
             }
             if fleet.accounts.unknown > 0 {
                 Text("\(fleet.accounts.unknown) not counted (no data)").foregroundColor(Theme.ink3)

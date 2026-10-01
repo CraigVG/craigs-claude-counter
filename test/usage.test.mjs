@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeUsage, severityFor, prettyTier, fetchUsage, fetchProfile } from '../src/usage.mjs';
+import { normalizeUsage, bankedResetsFrom, severityFor, prettyTier, fetchUsage, fetchProfile } from '../src/usage.mjs';
+import { USAGE_RESETS_URL } from '../src/config.mjs';
 
 // Real captured response from GET /api/oauth/usage (2026-06-18).
 const SAMPLE = {
@@ -120,4 +121,71 @@ test('fetchProfile returns email + friendly tier', async () => {
   assert.equal(p.email, 'a@b.com');
   assert.equal(p.tier, 'Max 20x');
   assert.equal(p.extraUsageEnabled, true);
+});
+
+// Real captured `cedar_ember` block from GET /api/oauth/usage?cedar_ember=1
+// with a Claude Code User-Agent (2026-09-30): one launch reset, already spent.
+const CEDAR_EMBER = {
+  eligible: true, ineligible_reason: null, at_limit: false, exhausted: [],
+  grants: [{
+    id: 'opus55-launch-promax-20260921',
+    label: 'Claude Opus 5.5 launch: one usage-limit reset for Pro and Max',
+    resets_total: 1, resets_left: 0,
+    starts_at: '2026-09-22T16:00:00+00:00', ends_at: '2026-10-22T16:00:00+00:00',
+    clears: ['five_hour', 'seven_day', 'seven_day_overage_included'],
+    paused: false, usable_now: false, use_requires_limit: false,
+    percent_used: { five_hour: 76, seven_day: 46, seven_day_overage_included: 0 },
+    blocking: [], arm: null,
+  }],
+  next_grant_id: null, weekly_resets_at: '2026-10-05T21:00:00+00:00', cooldown_until: null,
+  event_props: { surface: 'claude_code_cli', tier: 'claude_max_20x', tenure_bucket: '90-364', billing_path: 'stripe', billing_period: 'unknown', extra_usage_state: 'enabled' },
+};
+const SEP30 = Date.parse('2026-09-30T12:00:00Z');
+
+test('bankedResetsFrom reads a spent grant as zero left', () => {
+  const r = bankedResetsFrom({ cedar_ember: CEDAR_EMBER }, SEP30);
+  assert.equal(r.eligible, true);
+  assert.equal(r.left, 0);
+  assert.equal(r.total, 1);
+  assert.equal(r.usableNow, false);
+  assert.equal(r.nextExpiresAt, null);
+  assert.equal(r.grants.length, 1);
+  assert.equal(r.grants[0].useRequiresLimit, false);
+  assert.deepEqual(r.grants[0].clears, ['five_hour', 'seven_day', 'seven_day_overage_included']);
+});
+
+test('bankedResetsFrom sums live grants and reports the soonest expiry', () => {
+  const g = CEDAR_EMBER.grants[0];
+  const raw = { cedar_ember: { ...CEDAR_EMBER, grants: [
+    { ...g, id: 'a', resets_left: 1, usable_now: true },
+    { ...g, id: 'b', resets_total: 2, resets_left: 2, ends_at: '2026-10-10T00:00:00+00:00', paused: true },
+    { ...g, id: 'old', resets_left: 1, ends_at: '2026-09-01T00:00:00+00:00' },
+    { id: 'bad' },
+  ] } };
+  const r = bankedResetsFrom(raw, SEP30);
+  assert.equal(r.left, 3);
+  assert.equal(r.total, 3);
+  assert.equal(r.usableNow, true);
+  assert.equal(r.nextExpiresAt, '2026-10-10T00:00:00+00:00');
+  assert.deepEqual(r.grants.map((x) => x.id), ['a', 'b']);
+});
+
+test('bankedResetsFrom is null when the block is absent; ineligible reads as empty', () => {
+  assert.equal(bankedResetsFrom({}), null);
+  assert.equal(bankedResetsFrom({ cedar_ember: null }), null);
+  assert.equal(normalizeUsage(SAMPLE).bankedResets, null);
+  const r = bankedResetsFrom({ cedar_ember: { eligible: false, ineligible_reason: 'surface', grants: [] } });
+  assert.equal(r.eligible, false);
+  assert.equal(r.ineligibleReason, 'surface');
+  assert.equal(r.left, 0);
+});
+
+test('fetchUsage asks for banked resets as the Claude Code CLI', async () => {
+  let seen;
+  const fetchImpl = async (url, init) => { seen = { url, ua: init.headers['User-Agent'] }; return { ok: true, json: async () => ({ ...SAMPLE, cedar_ember: CEDAR_EMBER }) }; };
+  const u = await fetchUsage('tok', { fetchImpl });
+  assert.equal(seen.url, USAGE_RESETS_URL);
+  assert.match(seen.url, /[?&]cedar_ember=1\b/);
+  assert.match(seen.ua, /^claude-cli\//);
+  assert.equal(u.bankedResets.total, 1);
 });
