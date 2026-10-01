@@ -294,11 +294,10 @@ struct AccountRowView: View {
     @ViewBuilder private var account: some View {
         let name = Text(a.name).font(Theme.ui(layout.compact ? 13 : 14, .medium)).foregroundColor(Theme.ink)
             .lineLimit(1).truncationMode(.tail)
-        let tags = HStack(spacing: 6) { statusTag; BankedResetsTag(resets: a.usage?.bankedResets) }
         if layout.compact {
-            HStack(spacing: 8) { name; tags }
+            HStack(spacing: 8) { name; statusTag }
         } else {
-            VStack(alignment: .leading, spacing: 4) { name; tags }
+            VStack(alignment: .leading, spacing: 4) { name; statusTag }
         }
     }
 
@@ -459,10 +458,38 @@ struct ModelCell: View {
     }
 }
 
+/// "↺ 1 reset · by Oct 22" under the overage figure for an account holding
+/// banked limit resets; the grants are listed on hover. Mirrors the web cell.
+struct BankedResetsLine: View {
+    let resets: BankedResetsDTO?
+    var compact: Bool = false
+    var body: some View {
+        if let r = resets, r.left > 0 {
+            // Compact rows share the line with the overage figure, so just the count.
+            HStack(spacing: 0) {
+                Text(compact ? "↺ \(r.left)" : "↺ \(r.left) reset\(r.left == 1 ? "" : "s")")
+                    .font(Theme.mono(compact ? 11 : 11.5, .semibold)).foregroundColor(Theme.ok)
+                if !compact, let by = r.nextExpiresAt.flatMap(TimeFmt.parse) {
+                    Text(" · by \(by.formatted(.dateTime.month(.abbreviated).day()))").font(Theme.mono(11.5, .regular)).foregroundColor(Theme.ink3)
+                }
+            }
+            .lineLimit(1).minimumScaleFactor(0.85)
+            .help(r.helpText)
+        }
+    }
+}
+
 struct OverageCell: View {
     let usage: UsageDTO?
     var compact: Bool = false
     var body: some View {
+        if compact {
+            HStack(spacing: 8) { overage; BankedResetsLine(resets: usage?.bankedResets, compact: true) }
+        } else {
+            VStack(alignment: .leading, spacing: 7) { overage; BankedResetsLine(resets: usage?.bankedResets) }
+        }
+    }
+    @ViewBuilder private var overage: some View {
         if let o = usage?.overage, o.enabled == true {
             let size: CGFloat = compact ? 12 : 13
             let amount = HStack(spacing: 4) {
