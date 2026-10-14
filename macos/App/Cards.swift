@@ -87,9 +87,9 @@ struct AccountCard: View {
                 }
             }
             Meter(pct: pct ?? 2, sev: pct == nil ? .idle : sev, maxW: .infinity)
-            Text((pct ?? 0) > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : (kind == .session ? "idle" : "at rest"))
+            Text(kind == .weekly ? TimeFmt.weeklyResetText(w?.resetsAt) : (pct ?? 0) > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : (kind == .session ? "idle" : "at rest"))
                 .font(Theme.mono(10.5, .regular))
-                .foregroundColor(sev == .alarm ? Color(hex: 0xcf9a9c) : Theme.ink4)
+                .foregroundColor(sev == .alarm ? Color(hex: 0xcf9a9c) : (kind == .weekly ? Theme.ink3 : Theme.ink4))
         }
         .opacity(a.isRelogin ? 0.4 : 1)
     }

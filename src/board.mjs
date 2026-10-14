@@ -1,6 +1,6 @@
-// Board ordering: the default headroom sort plus click-to-sort by column.
+// Board ordering: the default weekly-reset sort plus click-to-sort by column.
 // Shared with the browser (served as /board.mjs) so the page and the tests use
-// identical code. The macOS app mirrors this in macos/App/BoardSort.swift.
+// identical code. The macOS app mirrors this in macos/Shared/BoardSort.swift.
 //
 // Pure functions over the /api/usage `accounts` array. No I/O.
 import { tierWeight } from './fleet.mjs';
@@ -26,8 +26,14 @@ export function headroomKey(a, { warnPct = 70, critPct = 90 } = {}) {
 // Sortable columns. `value` returns null when the account has no data for the
 // column; those rows always sink to the bottom, whichever direction is chosen.
 // `first` is the direction a first click uses: usage columns put the most
-// headroom on top (like the default board), plan and overage the largest.
+// headroom on top, plan and overage the largest.
 export const SORT_COLUMNS = {
+  headroom: { label: 'headroom', first: 'asc', value: (a) => headroomKey(a) },
+  reset: { label: 'weekly reset', first: 'asc', value: (a) => {
+    const at = a.usage?.weekly?.resetsAt;
+    const t = at ? Date.parse(at) : NaN;
+    return Number.isFinite(t) ? t : null;
+  } },
   account: { label: 'account', first: 'asc', value: (a) => String(a.label || a.id || '').toLowerCase() },
   plan: { label: 'plan', first: 'desc', value: (a) => (a.tier ? tierWeight(a.tier).weight : null) },
   session: { label: 'session', first: 'asc', value: (a) => (a.usage ? (a.usage.session?.pct ?? 0) : null) },
@@ -42,10 +48,10 @@ export const SORT_COLUMNS = {
   overage: { label: 'overage', first: 'desc', value: (a) => (a.usage?.overage?.enabled ? a.usage.overage.usedUsd ?? 0 : null) },
 };
 
-export const DEFAULT_SORT = { key: 'headroom', dir: 'asc' };
+export const DEFAULT_SORT = { key: 'reset', dir: 'asc' };
 
 // Next sort state after a click on column `key`: first click uses the column's
-// natural direction, the second reverses it, the third returns to headroom.
+// natural direction, the second reverses it, the third returns to weekly reset.
 export function nextSort(current, key) {
   const col = SORT_COLUMNS[key];
   if (!col) return DEFAULT_SORT;
@@ -64,7 +70,7 @@ export function parseSort(s) {
 const cmp = (x, y) => (typeof x === 'string' ? x.localeCompare(y) : x - y);
 
 // Returns a new array in board order. Ties fall back to the headroom order,
-// then the label, so rows never shuffle between refreshes.
+// then the label. Reset ties (including unknowns) preserve input order.
 export function sortAccounts(accounts, sort = DEFAULT_SORT, thresholds) {
   const list = Array.isArray(accounts) ? [...accounts] : [];
   const col = SORT_COLUMNS[sort?.key];
@@ -81,6 +87,7 @@ export function sortAccounts(accounts, sort = DEFAULT_SORT, thresholds) {
         if (c !== 0) return sign * c;
       }
     }
+    if (sort?.key === 'reset') return 0;
     const h = headroomKey(a, thresholds) - headroomKey(b, thresholds);
     if (h !== 0) return h;
     return name(a).localeCompare(name(b));

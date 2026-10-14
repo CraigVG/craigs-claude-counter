@@ -1,15 +1,17 @@
 import Foundation
 
-/// Board ordering: headroom by default (most available on top), or a column.
+/// Board ordering: weekly reset by default (soonest on top), or a column.
 /// Mirrors src/board.mjs so the app and the web board agree: a first click sorts
 /// usage columns lowest first and plan / overage largest first, a second click
-/// reverses, a third returns to headroom. Accounts with no data for the column
-/// sink to the bottom in either direction; ties fall back to headroom, then name.
+/// reverses, a third returns to weekly reset. Accounts with no data for the column
+/// sink to the bottom in either direction. Reset ties preserve input order;
+/// other column ties fall back to headroom, then name.
 enum SortColumn: String, CaseIterable {
-    case headroom, account, plan, session, weekly, model, overage
+    case reset, headroom, account, plan, session, weekly, model, overage
 
     var label: String {
         switch self {
+        case .reset: return "weekly reset"
         case .model: return "model weekly"
         default: return rawValue
         }
@@ -17,6 +19,7 @@ enum SortColumn: String, CaseIterable {
 
     var help: String {
         switch self {
+        case .reset: return "Sort by weekly reset date"
         case .headroom: return "Sort by headroom"
         case .account: return "Sort by account name"
         case .plan: return "Sort by plan (weekly capacity)"
@@ -33,6 +36,7 @@ enum SortColumn: String, CaseIterable {
     /// `.account` sorts by name and `.headroom` by `sortKey` instead.
     func value(_ a: AccountDTO) -> Double? {
         switch self {
+        case .reset: return TimeFmt.parse(a.usage?.weekly?.resetsAt)?.timeIntervalSince1970
         case .headroom, .account: return nil
         case .plan: return a.tier.map(Self.planWeight)
         case .session: return a.usage.map { $0.session?.pct ?? 0 }
@@ -55,22 +59,23 @@ enum SortColumn: String, CaseIterable {
 }
 
 struct BoardSort: Equatable {
-    var column: SortColumn = .headroom
+    var column: SortColumn = .reset
     var ascending = true
 
     static let storageKey = "boardSort"
-    static let headroom = BoardSort()
+    static let defaultSort = BoardSort()
+    static let headroom = BoardSort(column: .headroom)
 
-    init(column: SortColumn = .headroom, ascending: Bool = true) {
+    init(column: SortColumn = .reset, ascending: Bool = true) {
         self.column = column
         self.ascending = ascending
     }
 
-    /// Parses a stored "weekly:desc"; anything unrecognized is headroom.
+    /// Parses a stored "weekly:desc"; anything unrecognized is weekly reset.
     init(raw: String) {
         let parts = raw.split(separator: ":").map(String.init)
-        guard parts.count == 2, let c = SortColumn(rawValue: parts[0]), c != .headroom,
-              parts[1] == "asc" || parts[1] == "desc" else { self = .headroom; return }
+        guard parts.count == 2, let c = SortColumn(rawValue: parts[0]),
+              parts[1] == "asc" || parts[1] == "desc" else { self = .defaultSort; return }
         self.init(column: c, ascending: parts[1] == "asc")
     }
 
@@ -78,6 +83,7 @@ struct BoardSort: Equatable {
 
     var note: String {
         switch column {
+        case .reset: return "sorted by weekly reset · \(ascending ? "soonest" : "latest") first"
         case .headroom: return "sorted by headroom · most available on top"
         case .account: return "sorted by account · \(ascending ? "A–Z" : "Z–A")"
         default: return "sorted by \(column.label) · \(ascending ? "lowest" : "highest") first"
@@ -89,7 +95,7 @@ struct BoardSort: Equatable {
         guard c != .headroom else { return .headroom }
         if column != c { return BoardSort(column: c, ascending: c.firstAscending) }
         if ascending == c.firstAscending { return BoardSort(column: c, ascending: !ascending) }
-        return .headroom
+        return .defaultSort
     }
 
     func sorted(_ accounts: [AccountDTO]) -> [AccountDTO] {
@@ -109,6 +115,7 @@ struct BoardSort: Equatable {
                 default: break
                 }
             }
+            if column == .reset { return false }
             if a.sortKey != b.sortKey { return a.sortKey < b.sortKey }
             return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
         }

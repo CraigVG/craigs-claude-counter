@@ -21,7 +21,7 @@
 // weighted mean of headroom.
 //
 // Time is folded in through resets. Both windows drop straight to zero at
-// their reset time (session: 5h after first use; weekly: 7d after first use),
+// their reset time (session: 5h after first use; weekly: fixed 7d cadence),
 // so each account yields at most two "relief" events. Playing them in order
 // tells exactly how much of the fleet's used capacity comes back at each one:
 // after the earlier reset the account is still bound by the later window's
@@ -88,7 +88,7 @@ function analyzeAccount(a, { now, weights, models }) {
   // The binding weekly-scale window: the all-models weekly, or the scoped
   // weekly of a model the fleet runs on if that one is higher.
   let wPct = u.weekly && u.weekly.pct != null ? Math.max(0, u.weekly.pct) : 0;
-  let wAt = wPct > 0 ? ms(u.weekly?.resetsAt) : null;
+  let wAt = ms(u.weekly?.resetsAt);
   let wKind = 'weekly';
   for (const m of u.weeklyModels || []) {
     if (!m || m.pct == null || m.pct <= wPct) continue;

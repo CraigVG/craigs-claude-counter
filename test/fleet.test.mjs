@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeFleet, tierWeight, SESSION_MS, WEEK_MS } from '../src/fleet.mjs';
@@ -141,4 +143,14 @@ test('banked resets are totalled across accounts, separately from capacity', () 
   const f = computeFleet([a, b, c], { now: NOW });
   assert.deepEqual(f.bankedResets, { left: 1, accounts: [{ account: 'a', left: 1, nextExpiresAt: at(500) }] });
   assert.deepEqual(computeFleet([], { now: NOW }).bankedResets, { left: 0, accounts: [] });
+});
+
+
+test('zero weekly usage retains its known reset anchor without inventing relief', () => {
+  const a = acct('idle', 'Pro', win(0, null), { pct: 0, resetsAt: at(72) });
+  const analyze = runInNewContext(readFileSync(new URL('../src/fleet.mjs', import.meta.url), 'utf8').replace(/^export /gm, '') + '\nanalyzeAccount');
+  assert.equal(analyze(a, { now: NOW, weights: { Pro: 1 }, models: [] }).weeklyResetsAt, Date.parse(at(72)));
+  const f = computeFleet([a], { now: NOW });
+  assert.equal(f.usedPct, 0);
+  assert.deepEqual(f.events, []);
 });

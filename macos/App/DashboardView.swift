@@ -14,7 +14,7 @@ struct BoardLayout {
     let compact: Bool
     var tick: CGFloat { 4 }
     var plan: CGFloat { 84 }
-    var metric: CGFloat { compact ? 200 : 150 }
+    var metric: CGFloat { compact ? 230 : 150 }
     var model: CGFloat { compact ? 104 : 96 }
     var over: CGFloat { compact ? 170 : 150 }
     var action: CGFloat { compact ? 64 : 78 }
@@ -33,10 +33,10 @@ struct BoardLayout {
 struct DashboardView: View {
     @ObservedObject var model: CounterModel
     @AppStorage(Density.storageKey) private var densityRaw = Density.auto.rawValue
-    @AppStorage(BoardSort.storageKey) private var sortRaw = BoardSort.headroom.raw
+    @AppStorage(BoardSort.storageKey) private var sortRaw = BoardSort.defaultSort.raw
     @State private var hoverColumn: SortColumn?
 
-    /// Headroom (most available on top) unless a column header was clicked.
+    /// Weekly reset (soonest on top) unless a column header was clicked.
     private var sort: BoardSort { BoardSort(raw: sortRaw) }
 
     private var accounts: [AccountDTO] {
@@ -120,6 +120,11 @@ struct DashboardView: View {
                 .help(compact ? "Switch to comfortable rows" : "Switch to compact single-line rows")
                 .keyboardShortcut("k", modifiers: [.command, .shift])
             }
+            Menu("Sort") {
+                ForEach(SortColumn.allCases, id: \.self) { column in
+                    Button(column.label) { sortRaw = sort.next(tapping: column).raw }
+                }
+            }.help("Choose account order")
             Button { Task { await model.load() } } label: { Text(narrow ? "\u{21bb}" : "\u{21bb}  Refresh") }
                 .buttonStyle(SoftButton())
             Button { model.openAddAccount() } label: { Text(narrow ? "+" : "+  Add account") }
@@ -174,7 +179,7 @@ struct DashboardView: View {
             headCell("ACCOUNT", .account).frame(maxWidth: .infinity, alignment: .leading)
             headCell("PLAN", .plan).frame(width: layout.plan, alignment: .leading)
             headCell("SESSION · 5H", .session).frame(width: layout.metric, alignment: .leading)
-            headCell("WEEKLY", .weekly).frame(width: layout.metric, alignment: .leading)
+            HStack(spacing: 6) { headCell("WEEKLY", .weekly); headCell("RESET", .reset) }.frame(width: layout.metric, alignment: .leading)
             headCell("MODEL WK", .model).frame(width: layout.model, alignment: .leading)
             headCell("OVERAGE", .overage).frame(width: layout.over, alignment: .leading)
             Color.clear.frame(width: layout.action)
@@ -184,7 +189,7 @@ struct DashboardView: View {
     }
 
     /// A clickable column header: first click sorts by it, second reverses,
-    /// third returns to headroom. The arrow shows the active direction.
+    /// third returns to weekly reset. The arrow shows the active direction.
     private func headCell(_ s: String, _ column: SortColumn) -> some View {
         let on = sort.column == column
         let hover = hoverColumn == column
@@ -216,9 +221,9 @@ struct DashboardView: View {
                 legendKey(Theme.alarm, "at limit ≥90%")
                 Spacer()
                 Text(sort.note)
-                if sort != .headroom {
-                    Button { sortRaw = BoardSort.headroom.raw } label: {
-                        Text("sort by headroom").underline()
+                if sort != .defaultSort {
+                    Button { sortRaw = BoardSort.defaultSort.raw } label: {
+                        Text("sort by weekly reset").underline()
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(Theme.ink3)
@@ -355,10 +360,12 @@ struct MetricCell: View {
     private var sev: Severity { Severity.of(pct) }
 
     private var resetLabel: String {
+        if kind == .weekly { return TimeFmt.weeklyResetText(w?.resetsAt) }
         guard let pct = pct else { return kind == .session ? "no active session" : "no data" }
         return pct > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : (kind == .session ? "idle" : "at rest")
     }
     private var resetColor: Color {
+        if kind == .weekly { return sev == .alarm ? Color(hex: 0xcf9a9c) : Theme.ink3 }
         guard let pct = pct else { return Theme.ink4 }
         return sev == .alarm ? Color(hex: 0xcf9a9c) : (pct > 0 ? Theme.ink3 : Theme.ink4)
     }
@@ -726,7 +733,7 @@ struct SummaryStrip: View {
 
         if let w = worst, w.pct >= Theme.critPct {
             return Info(tone: .alarm, sig: "At limit",
-                        line: line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(TimeFmt.resetText(w.resets, now: now))"),
+                        line: line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(w.kind == "weekly" ? TimeFmt.weeklyResetText(w.resets) : TimeFmt.resetText(w.resets, now: now))"),
                         attn: attn, total: accounts.count)
         } else if !relogin.isEmpty {
             let l = relogin.count == 1 ? "**\(relogin[0].name)** needs you to sign in again"
@@ -734,7 +741,7 @@ struct SummaryStrip: View {
             return Info(tone: .alarm, sig: "Re-login", line: line(l), attn: attn, total: accounts.count)
         } else if let w = worst, w.pct >= Theme.warnPct {
             return Info(tone: .warn, sig: "Warning",
-                        line: line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(TimeFmt.resetText(w.resets, now: now))"),
+                        line: line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(w.kind == "weekly" ? TimeFmt.weeklyResetText(w.resets) : TimeFmt.resetText(w.resets, now: now))"),
                         attn: attn, total: accounts.count)
         } else if let w = worst {
             return Info(tone: .normal, sig: "All clear",
