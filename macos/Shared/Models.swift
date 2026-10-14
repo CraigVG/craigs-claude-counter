@@ -86,8 +86,7 @@ struct AccountDTO: Decodable, Identifiable {
         return max(u.session?.pct ?? 0, u.weekly?.pct ?? 0)
     }
     // Tiered: at-limit > needs-relogin > warning > usage > idle  (matches the web app).
-    // The app and web boards sort ascending (most available on top); the widget
-    // sorts descending because it only has room for the most-constrained few.
+    // Headroom remains an optional board sort; weekly reset is the default.
     var sortKey: Double {
         let w = worstPct
         var tier = 0.0
@@ -239,6 +238,14 @@ enum TimeFmt {
         guard let d = parse(iso) else { return "" }
         let f = DateFormatter()
         f.dateFormat = "EEE, MMM d h:mm a"
+        return f.string(from: d)
+    }
+
+    /// Weekly anchors remain real even when usage is zero.
+    static func weeklyResetText(_ iso: String?) -> String {
+        guard let d = parse(iso) else { return "reset unknown" }
+        let f = DateFormatter()
+        f.dateFormat = "MMM d h:mm a"
         return f.string(from: d)
     }
 

@@ -341,7 +341,7 @@
           <div><button class="sort" type="button" data-sort="account" title="Sort by account name">Account<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="plan" title="Sort by plan (weekly capacity)">Plan<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="session" title="Sort by session usage">Session&nbsp;&middot;&nbsp;5h<span class="arr" aria-hidden="true"></span></button></div>
-          <div><button class="sort" type="button" data-sort="weekly" title="Sort by weekly usage">Weekly<span class="arr" aria-hidden="true"></span></button></div>
+          <div><button class="sort" type="button" data-sort="weekly" title="Sort by weekly usage">Weekly<span class="arr" aria-hidden="true"></span></button> <button class="sort" type="button" data-sort="reset" title="Sort by weekly reset date">Reset<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="model" title="Sort by per-model weekly usage">Model&nbsp;wk<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="overage" title="Sort by overage spent">Overage<span class="arr" aria-hidden="true"></span></button></div>
           <div></div>
@@ -359,7 +359,7 @@
       <span class="key"><span class="swatch" style="background:var(--warn)"></span> warning 70&ndash;89%</span>
       <span class="key"><span class="swatch" style="background:var(--alarm)"></span> at limit &ge;90%</span>
       <span style="flex:1"></span>
-      <span class="sortnote" id="sortnote">sorted by headroom &middot; most available on top</span>
+      <span class="sortnote" id="sortnote">sorted by weekly reset &middot; soonest first</span>
     </div>
   </div>
 
@@ -394,9 +394,9 @@ function resetText(iso){ const t = shortDur(iso); return t==='now' ? 'resettingâ
 function sevOf(pct){ if(pct == null) return 'idle'; if(pct >= 90) return 'alarm'; if(pct >= 70) return 'warn'; if(pct <= 0) return 'idle'; return 'normal'; }
 const sevCls = (sev) => sev==='alarm' ? 'is-alarm' : sev==='warn' ? 'is-warn' : sev==='idle' ? 'is-idle' : '';
 
-// ---- board order: headroom by default (most available on top), or a column ----
+// ---- board order: weekly reset by default, or a column ----
 // Clicking a header sorts by it (usage columns lowest first, plan and overage
-// largest first), clicking again reverses, a third click returns to headroom.
+// largest first), clicking again reverses, a third click returns to weekly reset.
 // The choice is kept in localStorage. Logic lives in src/board.mjs.
 const SORT_KEY = 'ccc.sort';
 let sort = DEFAULT_SORT;
@@ -414,28 +414,34 @@ function renderSortUi(){
     b.setAttribute('aria-label', `${b.title}${on ? `, sorted ${sort.dir === 'asc' ? 'ascending' : 'descending'}` : ''}`);
   });
   const note = $('#sortnote');
-  if(sort.key === 'headroom'){ note.innerHTML = 'sorted by headroom &middot; most available on top'; return; }
   const col = SORT_COLUMNS[sort.key];
-  const text = sort.key === 'account' ? (sort.dir === 'asc' ? 'A&ndash;Z' : 'Z&ndash;A') : (sort.dir === 'asc' ? 'lowest first' : 'highest first');
-  note.innerHTML = `sorted by ${esc(col.label)} &middot; ${text} &middot; <button type="button" id="sort-reset">sort by headroom</button>`;
+  const text = sort.key === 'account' ? (sort.dir === 'asc' ? 'A&ndash;Z' : 'Z&ndash;A') : sort.key === 'reset' ? (sort.dir === 'asc' ? 'soonest first' : 'latest first') : (sort.dir === 'asc' ? 'lowest first' : 'highest first');
+  note.innerHTML = `sorted by ${esc(col.label)} &middot; ${text} &middot; <button type="button" id="sort-reset">sort by weekly reset</button>`;
   $('#sort-reset').onclick = () => setSort(DEFAULT_SORT);
+  note.insertAdjacentHTML('beforeend', ' &middot; <button type="button" id="sort-headroom">sort by headroom</button>');
+  $('#sort-headroom').onclick = () => setSort({key:'headroom', dir:'asc'});
 }
 document.querySelectorAll('.head .sort').forEach(b => b.onclick = () => setSort(nextSort(sort, b.dataset.sort)));
+
+function weeklyResetText(iso){
+  if(!iso || !Number.isFinite(Date.parse(iso))) return 'reset unknown';
+  return new Date(iso).toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+}
 
 function metricCell(w, kind){
   const lbl = `<span class="clabel">${kind === 'session' ? 'Session &middot; 5h' : 'Weekly'}</span>`;
   if(!w || w.pct == null){
-    const label = kind === 'session' ? 'no active session' : 'no data';
+    const label = kind === 'session' ? 'no active session' : weeklyResetText(w?.resetsAt);
     return `<div class="metric">${lbl}<div class="pct is-idle">&mdash;</div><div class="meter is-idle"><i style="width:2%"></i></div><span class="reset muted">${label}</span></div>`;
   }
   const sev = sevOf(w.pct), cls = sevCls(sev);
   const width = Math.max(2, Math.min(100, w.pct));
   const live = w.pct > 0;
-  const reset = live ? resetText(w.resetsAt) : (kind === 'session' ? 'idle' : 'at rest');
+  const reset = kind === 'weekly' ? weeklyResetText(w.resetsAt) : live ? resetText(w.resetsAt) : (kind === 'session' ? 'idle' : 'at rest');
   return `<div class="metric">${lbl}
     <div class="pct ${cls}">${w.pct}<span class="sym">%</span></div>
     <div class="meter ${cls}"><i style="width:${width}%"></i></div>
-    <span class="reset ${sev==='alarm'?'is-alarm':''} ${live?'':'muted'}" ${live?`data-reset="${esc(w.resetsAt||'')}"`:''}>${esc(reset)}</span>
+    <span class="reset ${sev==='alarm'?'is-alarm':''} ${live || kind === 'weekly'?'':'muted'}" ${live && kind === 'session'?`data-reset="${esc(w.resetsAt||'')}"`:''}>${esc(reset)}</span>
   </div>`;
 }
 
@@ -602,7 +608,7 @@ function buildSummary(accounts){
   let tone = 'clear', sig = 'All clear', line = '';
   if(worst && worst.pct >= 90){
     tone = 'alarm'; sig = 'At limit';
-    line = `<b>${esc(worst.label)}</b> is at <span class="mono">${worst.pct}%</span> (${worst.kind}) &mdash; <span class="when" data-reset="${esc(worst.resetsAt||'')}">${esc(resetText(worst.resetsAt))}</span>`;
+    line = `<b>${esc(worst.label)}</b> is at <span class="mono">${worst.pct}%</span> (${worst.kind}) &mdash; <span class="when" ${worst.kind === 'session' ? `data-reset="${esc(worst.resetsAt||'')}"` : ''}>${esc(worst.kind === 'weekly' ? weeklyResetText(worst.resetsAt) : resetText(worst.resetsAt))}</span>`;
   } else if(relogin.length){
     tone = 'alarm'; sig = 'Re-login';
     line = relogin.length === 1
@@ -610,7 +616,7 @@ function buildSummary(accounts){
       : `<b>${relogin.length} accounts</b> need you to sign in again to resume tracking`;
   } else if(worst && worst.pct >= 70){
     tone = 'warn'; sig = 'Warning';
-    line = `<b>${esc(worst.label)}</b> is at <span class="mono">${worst.pct}%</span> (${worst.kind}) &mdash; <span class="when" data-reset="${esc(worst.resetsAt||'')}">${esc(resetText(worst.resetsAt))}</span>`;
+    line = `<b>${esc(worst.label)}</b> is at <span class="mono">${worst.pct}%</span> (${worst.kind}) &mdash; <span class="when" ${worst.kind === 'session' ? `data-reset="${esc(worst.resetsAt||'')}"` : ''}>${esc(worst.kind === 'weekly' ? weeklyResetText(worst.resetsAt) : resetText(worst.resetsAt))}</span>`;
   } else if(worst){
     tone = 'clear'; sig = 'All clear';
     line = `Most used: <b>${esc(worst.label)}</b> at <span class="mono">${worst.pct}%</span> &mdash; plenty of headroom`;
@@ -710,7 +716,7 @@ function demoData(){
     { id:'d2', label:'team@acme.dev',      tier:'Max 5x',  usage:{ session:win(78,128), weekly:win(44,5400), weeklyModels:[mdl('Fable',30,5400)], overage:null } },
     { id:'d3', label:'you@example.com',    tier:'Max 20x', usage:{ session:win(22,176), weekly:win(38,3180), weeklyModels:[mdl('Fable',12,3180)], overage:{enabled:true, usedUsd:128.40, limitUsd:1000, pct:13} } },
     { id:'d4', label:'legacy@example.org', tier:'Pro',     error:'needs_relogin' },
-    { id:'d5', label:'personal@gmail.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:win(0,0), weeklyModels:[mdl('Fable',0,0)], overage:null } },
+    { id:'d5', label:'personal@example.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:{pct:0, resetsAt:at(2400), severity:'normal'}, weeklyModels:[mdl('Fable',0,0)], overage:null } },
   ];
   if(DEMO_MODE === 'many'){
     accounts.push(

@@ -12,7 +12,7 @@ struct CCCEntry: TimelineEntry {
 
 struct CCCProvider: TimelineProvider {
     func placeholder(in context: Context) -> CCCEntry {
-        CCCEntry(date: Date(), accounts: CCCSample.accounts, offline: false)
+        CCCEntry(date: Date(), accounts: BoardSort.defaultSort.sorted(CCCSample.accounts), offline: false)
     }
     func getSnapshot(in context: Context, completion: @escaping (CCCEntry) -> Void) {
         if context.isPreview { completion(placeholder(in: context)); return }
@@ -33,7 +33,7 @@ struct CCCProvider: TimelineProvider {
               let snap = try? JSONDecoder().decode(UsageSnapshot.self, from: data) else {
             return CCCEntry(date: Date(), accounts: [], offline: true)
         }
-        return CCCEntry(date: Date(), accounts: snap.accounts.sorted { $0.sortKey > $1.sortKey }, offline: false, fleet: snap.fleet)
+        return CCCEntry(date: Date(), accounts: BoardSort.defaultSort.sorted(snap.accounts), offline: false, fleet: snap.fleet)
     }
 }
 
@@ -92,6 +92,10 @@ struct CCCWidgetView: View {
             } else if let h = h {
                 Text("\(Int(h.pct))%").font(Theme.mono(38, .semibold)).foregroundColor(h.sev.color)
                 Text(h.kind).font(Theme.mono(11, .regular)).foregroundColor(Theme.ink3)
+                if h.kind == "weekly" {
+                    Text(TimeFmt.weeklyResetText(h.resetsAt)).font(Theme.mono(9, .regular)).foregroundStyle(Theme.ink3)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
                 Text(h.label).font(Theme.ui(12, .medium)).foregroundColor(Theme.ink2).lineLimit(1).truncationMode(.middle)
             } else {
                 Text("All clear").font(Theme.ui(17, .semibold)).foregroundColor(Theme.ok)
@@ -128,7 +132,7 @@ struct CCCWidgetView: View {
             } else {
                 if let f = entry.fleet, f.usedPct != nil { WFleet(f: f) }
                 if let h = h {
-                    Text("\(h.label) · \(Int(h.pct))% \(h.kind)")
+                    Text("\(h.label) · \(Int(h.pct))% \(h.kind)\(h.kind == "weekly" ? " · " + TimeFmt.weeklyResetText(h.resetsAt) : "")")
                         .font(Theme.mono(10.5, .regular)).foregroundColor(h.sev == .normal ? Theme.ink3 : h.sev.color)
                         .lineLimit(1)
                 }
@@ -201,7 +205,12 @@ struct WRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             metric(a.usage?.session)
-            metric(a.usage?.weekly)
+            VStack(alignment: .trailing, spacing: 2) {
+                metric(a.usage?.weekly)
+                Text(TimeFmt.weeklyResetText(a.usage?.weekly?.resetsAt))
+                    .font(Theme.mono(9, .regular)).foregroundStyle(Theme.ink3)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }.frame(width: 96, alignment: .trailing)
         }
     }
     private func metric(_ w: WindowDTO?) -> some View {
