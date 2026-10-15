@@ -84,3 +84,13 @@ test('token endpoint error surfaces status', async () => {
   const fetchImpl = async () => ({ ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }) });
   await assert.rejects(() => refresh({ refreshToken: 'x' }, { fetchImpl }), (e) => e.status === 400);
 });
+
+test('parseTokenResponse keeps the login lifetime as a timestamp, or null', () => {
+  const now = 1_000_000;
+  const t = parseTokenResponse({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600, refresh_token_expires_in: 2_419_200 }, now);
+  assert.equal(t.refreshExpiresAt, now + 2_419_200_000);
+  assert.equal(parseTokenResponse({ access_token: 'AT' }, now).refreshExpiresAt, null);
+  for (const bad of ['abc', -5, 0, null, Infinity]) {
+    assert.equal(parseTokenResponse({ access_token: 'AT', refresh_token_expires_in: bad }, now).refreshExpiresAt, null, String(bad));
+  }
+});

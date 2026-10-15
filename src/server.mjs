@@ -33,6 +33,7 @@ export async function refreshAccount(account, { oauth, credstore, locks }) {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken || account.refreshToken,
       expiresAt: tokens.expiresAt,
+      refreshExpiresAt: tokens.refreshExpiresAt ?? account.refreshExpiresAt ?? null,
     };
     await credstore.putAccount(updated);
     return updated;
@@ -42,6 +43,18 @@ export async function refreshAccount(account, { oauth, credstore, locks }) {
     p.catch(() => {}).finally(() => { if (locks.get(account.id) === p) locks.delete(account.id); });
   }
   return p;
+}
+
+// When a login has to be signed in again. Logins have died 27.1-28.2 days after sign-in (measured 2026-09-08 to
+// 2026-10-15), so without the endpoint's own refresh_token_expires_in the due date is sign-in + 27 days.
+export const DEFAULT_LOGIN_LIFE_MS = 27 * 24 * 60 * 60_000;
+export function loginInfo(account) {
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const loggedInAt = num(account && account.loggedInAt);
+  const refreshExpiresAt = num(account && account.refreshExpiresAt);
+  const reloginDueAt = refreshExpiresAt ?? (loggedInAt !== null ? loggedInAt + DEFAULT_LOGIN_LIFE_MS : null);
+  const dueSource = refreshExpiresAt !== null ? 'endpoint' : loggedInAt !== null ? 'sign-in + 27 d' : null;
+  return { loggedInAt, refreshExpiresAt, reloginDueAt, dueSource };
 }
 
 // Refresh an account's token if it is missing or close to expiry. Persists the
@@ -71,7 +84,11 @@ export function startBackgroundRefresh({ credstore, oauth, usage, locks, interva
     for (let a of accounts) {
       if (!a.refreshToken) continue;
       if (!a.expiresAt || a.expiresAt - now <= refreshWithinMs) {
-        try { a = await refreshAccount(a, { oauth, credstore, locks }); log(`kept ${a.label} logged in`); }
+        try {
+          a = await refreshAccount(a, { oauth, credstore, locks });
+          const due = loginInfo(a).reloginDueAt;
+          log(`kept ${a.label} logged in` + (due !== null ? `; login due in ${Math.round((due - Date.now()) / 3_600_000)} h` : ''));
+        }
         catch (e) { log(`refresh failed for ${a.label}: ${e.needsRelogin ? 'needs re-login' : (e.message || e)}`); continue; }
       }
       if (!usage || !a.accessToken || (a.tierCheckedAt && now - a.tierCheckedAt < tierEveryMs)) continue;
@@ -95,7 +112,7 @@ export function startBackgroundRefresh({ credstore, oauth, usage, locks, interva
 // account per cacheTtl, and serves the last-known value (stale) on errors.
 async function accountUsage(account, deps) {
   const { oauth, credstore, usage, thresholds, cache, locks, cacheTtl = 60_000, cooldownMs = 120_000, now = Date.now() } = deps;
-  const base = { id: account.id, label: account.label, tier: account.tier || null };
+  const base = { id: account.id, label: account.label, tier: account.tier || null, login: loginInfo(account) };
   const cached = cache && cache.get(account.id);
   // Permanent auth failure: surface it (with dimmed last-known data) instead of
   // silently serving stale cache forever.
@@ -302,7 +319,7 @@ export function createServer(deps = {}) {
 
       if (req.method === 'GET' && path === '/api/accounts') {
         const accounts = await credstore.listAccounts();
-        return sendJson(res, 200, accounts.map((a) => ({ id: a.id, label: a.label, tier: a.tier || null, expiresAt: a.expiresAt || null })));
+        return sendJson(res, 200, accounts.map((a) => ({ id: a.id, label: a.label, tier: a.tier || null, expiresAt: a.expiresAt || null, login: loginInfo(a) })));
       }
 
       if (req.method === 'POST' && path === '/api/login/start') {
@@ -349,6 +366,8 @@ export function createServer(deps = {}) {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           expiresAt: tokens.expiresAt,
+          refreshExpiresAt: tokens.refreshExpiresAt ?? null,
+          loggedInAt: Date.now(),
           tier,
         });
         // Clear any stale cache / cooldown / in-flight lock for this account.

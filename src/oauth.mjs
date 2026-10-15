@@ -44,10 +44,13 @@ export function parseTokenResponse(json, now = Date.now()) {
     throw new Error('token response missing access_token');
   }
   const expiresInMs = (json.expires_in ?? 3600) * 1000;
+  // How long the login (the refresh-token chain) lives, when the endpoint says so. A number only, never a token.
+  const loginSecs = Number(json.refresh_token_expires_in);
   return {
     accessToken: json.access_token,
     refreshToken: json.refresh_token ?? null,
     expiresAt: now + expiresInMs,
+    refreshExpiresAt: Number.isFinite(loginSecs) && loginSecs > 0 ? now + loginSecs * 1000 : null,
     scope: json.scope ?? null,
   };
 }

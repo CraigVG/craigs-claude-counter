@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, ensureFresh, startBackgroundRefresh } from '../src/server.mjs';
+import { createServer, ensureFresh, startBackgroundRefresh, loginInfo, DEFAULT_LOGIN_LIFE_MS } from '../src/server.mjs';
 import { OAUTH } from '../src/config.mjs';
 
 function memStore(seed = []) {
@@ -357,4 +357,71 @@ test('startup seeds the usage cache from history so a 429 burst serves last-know
     assert.ok(a.staleAgeMs >= 5 * 60_000 - 1000);
     assert.equal(out.fleet.accounts.counted, 1);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('loginInfo: the endpoint date wins, else sign-in + 27 d, else null; numbers only', () => {
+  assert.equal(DEFAULT_LOGIN_LIFE_MS, 27 * 24 * 3600_000);
+  assert.deepEqual(loginInfo({ loggedInAt: 1000, refreshExpiresAt: 5000 }),
+    { loggedInAt: 1000, refreshExpiresAt: 5000, reloginDueAt: 5000, dueSource: 'endpoint' });
+  assert.deepEqual(loginInfo({ loggedInAt: 1000 }),
+    { loggedInAt: 1000, refreshExpiresAt: null, reloginDueAt: 1000 + DEFAULT_LOGIN_LIFE_MS, dueSource: 'sign-in + 27 d' });
+  assert.deepEqual(loginInfo({}), { loggedInAt: null, refreshExpiresAt: null, reloginDueAt: null, dueSource: null });
+  assert.deepEqual(loginInfo({ loggedInAt: 'x', refreshExpiresAt: NaN }), { loggedInAt: null, refreshExpiresAt: null, reloginDueAt: null, dueSource: null });
+  const keys = Object.keys(loginInfo({ accessToken: 'AT', refreshToken: 'RT', loggedInAt: 1 }));
+  assert.deepEqual(keys.sort(), ['dueSource', 'loggedInAt', 'refreshExpiresAt', 'reloginDueAt']); // never a token
+});
+
+test('a refresh stores the endpoint login lifetime and keeps the old one when the response has none', async () => {
+  const credstore = memStore();
+  let next = 7777;
+  const oauth = { refresh: async ({ refreshToken }) => ({ accessToken: 'NEW', refreshToken: refreshToken + '+', expiresAt: Date.now() + 3600_000, refreshExpiresAt: next }) };
+  const account = { id: 'a', label: 'a', accessToken: 'OLD', refreshToken: 'RT', expiresAt: Date.now() + 1000, loggedInAt: 42, refreshExpiresAt: 1234 };
+  const out = await ensureFresh(account, { oauth, credstore });
+  assert.equal(out.refreshExpiresAt, 7777);
+  assert.equal(out.loggedInAt, 42); // a refresh is not a sign-in
+  next = null;
+  const out2 = await ensureFresh({ ...out, expiresAt: Date.now() + 1000 }, { oauth, credstore });
+  assert.equal(out2.refreshExpiresAt, 7777);
+});
+
+test('login finish records the sign-in time and the endpoint login lifetime', async () => {
+  const credstore = memStore();
+  const oauth = {
+    generatePkce: () => ({ verifier: 'V', challenge: 'C' }),
+    generateState: () => 'STATE',
+    buildAuthorizeUrl: () => 'https://claude.ai/oauth/authorize?x=1',
+    parsePastedCode: (s) => ({ code: s.split('#')[0], state: s.split('#')[1] || null }),
+    exchangeCode: async () => ({ accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000, refreshExpiresAt: 9_999_000 }),
+  };
+  const usage = { fetchProfile: async () => ({ email: 'new@x.com', tier: 'Max 5x' }) };
+  const { base, close } = await boot({ credstore, oauth, usage });
+  try {
+    const before = Date.now();
+    const s = await (await fetch(base + '/api/login/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: '' }) })).json();
+    await (await fetch(base + '/api/login/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ loginId: s.loginId, pastedCode: 'thecode#STATE' }) })).json();
+    const [a] = await credstore.listAccounts();
+    assert.ok(a.loggedInAt >= before && a.loggedInAt <= Date.now(), String(a.loggedInAt));
+    assert.equal(a.refreshExpiresAt, 9_999_000);
+    const listed = await (await fetch(base + '/api/accounts')).json();
+    assert.deepEqual(listed[0].login, { loggedInAt: a.loggedInAt, refreshExpiresAt: 9_999_000, reloginDueAt: 9_999_000, dueSource: 'endpoint' });
+    assert.equal(JSON.stringify(listed).includes('RT'), false); // no token in the listing
+  } finally { await close(); }
+});
+
+test('/api/usage carries each account\'s login due date, also on needs_relogin rows', async () => {
+  const credstore = memStore([
+    { id: 'ok', label: 'ok', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000, loggedInAt: 1000 },
+    { id: 'dead', label: 'dead', accessToken: 'AT2', refreshToken: 'RT2', expiresAt: Date.now() - 1000, refreshExpiresAt: 2000 },
+  ]);
+  const oauth = { refresh: async () => { const e = new Error('dead'); e.status = 400; throw e; } };
+  const usage = { fetchUsage: async () => goodUsage };
+  const { base, close } = await boot({ credstore, oauth, usage });
+  try {
+    const body = await (await fetch(base + '/api/usage')).json();
+    const by = Object.fromEntries(body.accounts.map((a) => [a.id, a]));
+    assert.equal(by.ok.login.reloginDueAt, 1000 + DEFAULT_LOGIN_LIFE_MS);
+    assert.equal(by.dead.error, 'needs_relogin');
+    assert.equal(by.dead.login.reloginDueAt, 2000);
+    assert.equal(JSON.stringify(body).includes('RT2'), false);
+  } finally { await close(); }
 });
