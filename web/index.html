@@ -373,7 +373,7 @@
 
 <script type="module">
 import { computeFleet } from '/fleet.mjs';
-import { sortAccounts, nextSort, parseSort, SORT_COLUMNS, DEFAULT_SORT } from '/board.mjs';
+import { sortAccounts, nextSort, parseSort, SORT_COLUMNS, DEFAULT_SORT, reloginOffered } from '/board.mjs';
 const $ = (s) => document.querySelector(s);
 let latest = null;
 let lastError = null;
@@ -509,7 +509,11 @@ function rowFor(a){
   const weekly  = isErrored && !u ? null : (u && u.weekly);
 
   let actions = `<button class="rowbtn del" title="Remove from dashboard" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}" aria-label="Remove">&#x2715;</button>`;
-  if(isRelogin) actions = `<button class="rowbtn relogin" data-relogin="${esc(a.id)}" data-label="${esc(a.label||a.id)}">Re-login</button>` + actions;
+  const offer = reloginOffered(a);
+  if(offer){
+    const due = offer === 'due' ? new Date(a.login.reloginDueAt).toISOString().slice(5, 10) : '';
+    actions = `<button class="rowbtn relogin" data-relogin="${esc(a.id)}" data-label="${esc(a.label||a.id)}" title="${offer === 'due' ? 'Login due ' + esc(due) + ': sign in again now so it never lapses' : 'Login expired: sign in again'}">${offer === 'due' ? 'Re-login (due ' + esc(due) + ')' : 'Re-login'}</button>` + actions;
+  }
 
   return `<div class="grid row ${cls}">
     <div class="tick"><span></span></div>

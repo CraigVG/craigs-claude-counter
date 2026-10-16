@@ -96,3 +96,14 @@ export function sortAccounts(accounts, sort = DEFAULT_SORT, thresholds) {
     return name(a).localeCompare(name(b));
   });
 }
+
+// When a row offers "Re-login": its login is dead (needs_relogin), or its due date (login.reloginDueAt from
+// /api/usage) is within RELOGIN_AHEAD_MS, so a seat can be signed in again BEFORE it lapses (a re-login replaces
+// the account in place). Returns 'needed', 'due' or null.
+export const RELOGIN_AHEAD_MS = 14 * 24 * 60 * 60_000;
+export function reloginOffered(a, now = Date.now()) {
+  if (a && a.error === 'needs_relogin') return 'needed';
+  const due = a && a.login && a.login.reloginDueAt;
+  if (typeof due === 'number' && Number.isFinite(due) && due - now <= RELOGIN_AHEAD_MS) return 'due';
+  return null;
+}

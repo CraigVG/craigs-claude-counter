@@ -77,3 +77,17 @@ test('stored sort strings round-trip and junk falls back to headroom', () => {
   assert.deepEqual(parseSort('nope:asc'), DEFAULT_SORT);
   assert.deepEqual(parseSort(null), DEFAULT_SORT);
 });
+
+test('reloginOffered: dead logins and logins due within 14 days offer Re-login; others do not', async () => {
+  const { reloginOffered, RELOGIN_AHEAD_MS } = await import('../src/board.mjs');
+  const now = 1_800_000_000_000;
+  assert.equal(RELOGIN_AHEAD_MS, 14 * 24 * 3600_000);
+  assert.equal(reloginOffered({ error: 'needs_relogin' }, now), 'needed');
+  assert.equal(reloginOffered({ login: { reloginDueAt: now + RELOGIN_AHEAD_MS } }, now), 'due');       // day 14: offered
+  assert.equal(reloginOffered({ login: { reloginDueAt: now + RELOGIN_AHEAD_MS + 1 } }, now), null);    // past day 14: not yet
+  assert.equal(reloginOffered({ login: { reloginDueAt: now - 1 } }, now), 'due');                      // already past due
+  assert.equal(reloginOffered({ login: { reloginDueAt: null } }, now), null);
+  assert.equal(reloginOffered({ login: { reloginDueAt: 'soon' } }, now), null);
+  assert.equal(reloginOffered({}, now), null);
+  assert.equal(reloginOffered({ error: 'fetch_failed', login: { reloginDueAt: now + 10 * 86400_000 } }, now), 'due');
+});
