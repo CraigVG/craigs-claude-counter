@@ -360,7 +360,7 @@ struct MetricCell: View {
 
     private var resetLabel: String {
         guard let pct = pct else { return kind == .session ? "no active session" : "no data" }
-        return pct > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : (kind == .session ? "idle" : "at rest")
+        return pct > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt)
     }
     private var resetColor: Color {
         guard let pct = pct else { return Theme.ink4 }

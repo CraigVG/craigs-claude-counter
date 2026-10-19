@@ -40,7 +40,7 @@ enum SortColumn: String, CaseIterable {
         case .plan: return a.tier.map(Self.planWeight)
         case .session: return a.usage.map { $0.session?.pct ?? 0 }
         case .weekly: return a.usage?.weekly?.pct
-        // An idle weekly window has no reset time, so it sinks with no-data rows.
+        // Unused weeks keep their reset date; a row with no date sinks with no-data rows.
         case .reset: return a.usage?.weekly?.resetsAt.flatMap(TimeFmt.parse)?.timeIntervalSince1970
         case .model: return (a.usage?.weeklyModels ?? []).compactMap(\.pct).max()
         case .overage:

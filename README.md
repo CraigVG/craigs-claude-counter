@@ -39,11 +39,11 @@ The app and widget are the same Status Board rendered natively in SwiftUI; they 
 
 ## What it shows, per account
 
-- **Session (5h)** and **Weekly** utilization — percentages with live reset countdowns
+- **Session (5h)** and **Weekly** utilization — percentages with live reset countdowns; an unused week shows the date it resets
 - **Per‑model weekly sub‑limits** (Fable today; Opus / Sonnet before) and **overage** spend, when active
 - Auto‑detected plan tier (Max 20× / Max 5× / Pro)
 - A top summary — how many accounts need attention and the single most‑pressing fact. The board lists the most available account first and the most constrained last
-- **Sortable columns** (web and macOS app) — click a header to sort by account, plan, session, weekly, weekly reset (**Resets**, next to Weekly), model weekly or overage. Usage columns sort lowest first (most room on top), plan and overage largest first, weekly reset soonest first (an idle week has no reset and stays at the bottom); click again to reverse, a third time to return to the headroom order. Accounts with no data for that column stay at the bottom. The choice is remembered
+- **Sortable columns** (web and macOS app) — click a header to sort by account, plan, session, weekly, weekly reset (**Resets**, next to Weekly), model weekly or overage. Usage columns sort lowest first (most room on top), plan and overage largest first, weekly reset soonest first; click again to reverse, a third time to return to the headroom order. Accounts with no data for that column stay at the bottom. The choice is remembered
 - A **fleet bar** (web, macOS app and widget since v1.3.0) — every account folded into one capacity‑weighted number (see below), split into what is free now, what comes back within the next 5 hours, and what stays locked until a weekly reset, plus a schedule of the next resets and a weekly burn‑rate check
 - **Compact mode** — one line per account so many accounts fit without scrolling. Auto‑enabled when the normal rows would overflow the window; pin it either way with the **Compact** button (⌘⇧K in the app). `?demo=many` previews it with 12 fake accounts.
 

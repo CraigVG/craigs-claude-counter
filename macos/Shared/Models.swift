@@ -242,6 +242,20 @@ enum TimeFmt {
         return f.string(from: d)
     }
 
+    /// "Sat, Oct 24" for a reset date.
+    static func day(_ iso: String?) -> String {
+        guard let d = parse(iso) else { return "" }
+        return d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
+
+    /// The label under a window at 0%. An unused week still has a fixed reset
+    /// date upstream, so it shows that; an unused session has none ("idle").
+    static func restingText(session: Bool, resetsAt: String?) -> String {
+        if session { return "idle" }
+        let d = day(resetsAt)
+        return d.isEmpty ? "at rest" : "resets \(d)"
+    }
+
     static func resetText(_ iso: String?, now: Date = Date()) -> String {
         let t = short(parse(iso), now: now)
         if t == "now" { return "resetting…" }

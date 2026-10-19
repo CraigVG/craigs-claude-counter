@@ -87,7 +87,7 @@ struct AccountCard: View {
                 }
             }
             Meter(pct: pct ?? 2, sev: pct == nil ? .idle : sev, maxW: .infinity)
-            Text((pct ?? 0) > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : (kind == .session ? "idle" : "at rest"))
+            Text((pct ?? 0) > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt))
                 .font(Theme.mono(10.5, .regular))
                 .foregroundColor(sev == .alarm ? Color(hex: 0xcf9a9c) : Theme.ink4)
         }

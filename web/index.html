@@ -434,11 +434,15 @@ function metricCell(w, kind){
   const sev = sevOf(w.pct), cls = sevCls(sev);
   const width = Math.max(2, Math.min(100, w.pct));
   const live = w.pct > 0;
-  const reset = live ? resetText(w.resetsAt) : (kind === 'session' ? 'idle' : 'at rest');
+  // An unused week still has a fixed reset date upstream; show it. An unused
+  // session has none (its 5h window starts at first use).
+  const restDate = !live && kind !== 'session' && w.resetsAt && !Number.isNaN(Date.parse(w.resetsAt)) ? w.resetsAt : null;
+  const reset = live ? resetText(w.resetsAt) : restDate ? `resets ${fmtDay(restDate)}` : (kind === 'session' ? 'idle' : 'at rest');
+  const title = restDate ? ` title="Resets ${esc(fmtDay(restDate))} ${esc(fmtClock(restDate))}"` : '';
   return `<div class="metric">${lbl}
     <div class="pct ${cls}">${w.pct}<span class="sym">%</span></div>
     <div class="meter ${cls}"><i style="width:${width}%"></i></div>
-    <span class="reset ${sev==='alarm'?'is-alarm':''} ${live?'':'muted'}" ${live?`data-reset="${esc(w.resetsAt||'')}"`:''}>${esc(reset)}</span>
+    <span class="reset ${sev==='alarm'?'is-alarm':''} ${live?'':'muted'}"${title} ${live?`data-reset="${esc(w.resetsAt||'')}"`:''}>${esc(reset)}</span>
   </div>`;
 }
 
@@ -713,7 +717,7 @@ function demoData(){
     { id:'d2', label:'team@acme.dev',      tier:'Max 5x',  usage:{ session:win(78,128), weekly:win(44,5400), weeklyModels:[mdl('Fable',30,5400)], overage:null } },
     { id:'d3', label:'you@example.com',    tier:'Max 20x', usage:{ session:win(22,176), weekly:win(38,3180), weeklyModels:[mdl('Fable',12,3180)], overage:{enabled:true, usedUsd:128.40, limitUsd:1000, pct:13} } },
     { id:'d4', label:'legacy@example.org', tier:'Pro',     error:'needs_relogin' },
-    { id:'d5', label:'personal@gmail.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:win(0,0), weeklyModels:[mdl('Fable',0,0)], overage:null } },
+    { id:'d5', label:'personal@gmail.com', tier:'Max 20x', usage:{ session:win(0,0), weekly:{ pct:0, resetsAt:at(6100), severity:'normal' }, weeklyModels:[mdl('Fable',0,0)], overage:null } },
   ];
   if(DEMO_MODE === 'many'){
     accounts.push(

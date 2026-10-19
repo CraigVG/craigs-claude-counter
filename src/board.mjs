@@ -39,8 +39,8 @@ export const SORT_COLUMNS = {
   plan: { label: 'plan', first: 'desc', value: (a) => (a.tier ? tierWeight(a.tier).weight : null) },
   session: { label: 'session', first: 'asc', value: (a) => (a.usage ? (a.usage.session?.pct ?? 0) : null) },
   weekly: { label: 'weekly', first: 'asc', value: (a) => a.usage?.weekly?.pct ?? null },
-  // When the all-models weekly window resets. An idle window has no reset
-  // time (nothing to give back), so it sinks with the no-data rows.
+  // When the all-models weekly window resets. Unused weeks keep their fixed
+  // reset date, so they sort too; a row with no date sinks with the no-data rows.
   reset: { label: 'weekly reset', first: 'asc', value: (a) => resetTime(a.usage?.weekly?.resetsAt) },
   model: {
     label: 'model weekly', first: 'asc',
