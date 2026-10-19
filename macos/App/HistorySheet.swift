@@ -245,7 +245,7 @@ private struct Legend: View {
     }
 }
 
-private struct StatTiles: View {
+struct StatTiles: View {
     let tiles: [StatTile]
     var body: some View {
         HStack(spacing: 8) {
@@ -422,7 +422,7 @@ private struct HoverLayer: View {
     }
 }
 
-private struct LineSwatch: View {
+struct LineSwatch: View {
     let color: Color
     let dashed: Bool
     var body: some View {
@@ -452,6 +452,18 @@ enum HistoryRange: String, CaseIterable, Identifiable {
     /// Samples further apart than this are not joined by a line.
     var gapSeconds: Double {
         switch self { case .day, .week: return 20 * 60; case .month: return 2 * 3600; case .quarter: return 8 * 3600 }
+    }
+    /// The fleet chart thins harder; mirrors FLEET_STEPS in src/usage-chart.mjs.
+    var fleetStep: String? {
+        switch self { case .day: return nil; case .week: return "15m"; case .month: return "1h"; case .quarter: return "3h" }
+    }
+    var fleetStepLabel: String? {
+        switch self { case .day: return nil; case .week: return "15 min"; case .month: return "hour"; case .quarter: return "3 h" }
+    }
+    var fleetGapSeconds: Double {
+        let step: Double
+        switch self { case .day: step = 0; case .week: step = 15 * 60; case .month: step = 3600; case .quarter: step = 3 * 3600 }
+        return max(gapSeconds, 3 * step)
     }
     func tickLabel(_ d: Date) -> String {
         switch self {

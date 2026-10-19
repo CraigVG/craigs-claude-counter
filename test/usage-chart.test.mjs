@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RANGES, parseRange, historyQuery, seriesFor, segments, nearest, timeTicks } from '../src/usage-chart.mjs';
+import { RANGES, parseRange, historyQuery, seriesFor, segments, nearest, timeTicks, fleetQuery, fleetGapMs } from '../src/usage-chart.mjs';
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const t0 = Date.parse('2026-10-19T12:00:00Z');
@@ -17,6 +17,15 @@ test('ranges parse with a 7d default and build the history query', () => {
   assert.equal(historyQuery('acct_1', '24h'), 'account=acct_1&since=24h&limit=0');
   assert.equal(historyQuery('acct_1', '90d'), 'account=acct_1&since=90d&limit=0&step=2h');
   for (const r of Object.values(RANGES)) assert.ok(r.gapMs >= 20 * MIN);
+});
+
+test('fleet queries thin long ranges and widen the gap to match', () => {
+  assert.equal(fleetQuery('24h'), 'since=24h');
+  assert.equal(fleetQuery('7d'), 'since=7d&step=15m');
+  assert.equal(fleetQuery('90d'), 'since=90d&step=3h');
+  assert.equal(fleetGapMs('24h'), 20 * MIN);
+  assert.equal(fleetGapMs('7d'), 45 * MIN);
+  assert.equal(fleetGapMs('90d'), 9 * HOUR);
 });
 
 test('series are weekly, session, then the first model; extra models are reported, not drawn', () => {

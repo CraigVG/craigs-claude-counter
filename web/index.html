@@ -255,7 +255,15 @@
   .hist-stats .sv { font: 600 17px var(--mono); color: var(--ink); margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .hist-stats .sv small { font-size: 11px; color: var(--ink-3); font-weight: 500; margin-left: 1px; }
   .hist-chart { position: relative; height: 290px; touch-action: pan-y; }
-  .hist-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .hist-chart.is-fleet { height: 400px; }
+  .hist-chart .ptitle { fill: var(--ink-3); font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .hist-chart .sep { stroke: var(--panel); stroke-width: 1.5; fill: none; }
+  .fleet-hist { all: unset; cursor: pointer; font: 11px var(--mono); color: var(--ink-3); border: 1px solid var(--hair); border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+  .fleet-hist:hover { color: var(--ink); border-color: #2c333d; }
+  .fleet-hist:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #fleet .fleet-bar { cursor: pointer; }
+  .hist-chart > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .hist-tip svg { flex: none; }
   .hist-chart .grid line { stroke: var(--hair); stroke-width: 1; }
   .hist-chart .axis text { fill: var(--ink-3); font: 10.5px var(--mono); }
   .hist-chart .thr line { stroke: var(--ink-4); stroke-width: 1; stroke-dasharray: 3 4; }
@@ -270,7 +278,7 @@
   .hist-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink-3); font-size: 13px; text-align: center; padding: 0 20px; }
   .hist-foot { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; font: 11px var(--mono); color: var(--ink-4); }
   .hist-foot a { color: var(--ink-3); }
-  @media (max-width: 600px) { .hist-chart { height: 220px; } .modal.hist { padding: 14px 14px 12px; } }
+  @media (max-width: 600px) { .hist-chart { height: 220px; } .hist-chart.is-fleet { height: 340px; } .modal.hist { padding: 14px 14px 12px; } }
   button.primary { font-family: var(--ui); background: var(--accent); border: 1px solid var(--accent); color: #0c0f13; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
   button.primary:hover { filter: brightness(1.08); }
   button.ghost { font-family: var(--ui); background: transparent; border: 1px solid var(--hair); color: var(--ink-2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
@@ -433,7 +441,7 @@
 <script type="module">
 import { computeFleet } from '/fleet.mjs';
 import { sortAccounts, nextSort, parseSort, SORT_COLUMNS, DEFAULT_SORT, reloginOffered } from '/board.mjs';
-import { RANGES, parseRange, historyQuery, seriesFor, segments, nearest, timeTicks } from '/usage-chart.mjs';
+import { RANGES, parseRange, historyQuery, seriesFor, segments, nearest, timeTicks, fleetQuery, fleetGapMs } from '/usage-chart.mjs';
 const $ = (s) => document.querySelector(s);
 let latest = null;
 let lastError = null;
@@ -648,6 +656,7 @@ function renderFleet(accounts){
       <span class="fleet-free"><b>${f.freePct}%</b> free now</span>
       <span class="spacer"></span>
       ${pace}
+      <button type="button" class="fleet-hist" data-fleet-hist title="Fleet capacity and usage over time">Over time &rsaquo;</button>
     </div>
     <div class="fleet-bar" role="img" aria-label="Fleet ${f.usedPct}% used, ${f.freePct}% free" title="${esc(perTitle)}">
       <i class="locked" style="width:${f.lockedPct}%"></i><i class="soon" style="width:${f.backSoonPct}%"></i>${paceMark}
@@ -904,6 +913,9 @@ $('#rows').addEventListener('click', (e) => {
   const row = e.target.closest('.row[data-id]');
   if (row) openHistory(row.dataset.id);
 });
+$('#fleet').addEventListener('click', (e) => {
+  if (e.target.closest('[data-fleet-hist], .fleet-bar')) openFleetHistory();
+});
 $('#hist-x').onclick = closeHistory;
 hist.onclick = (e) => { if (e.target === hist) closeHistory(); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && histState) closeHistory(); });
@@ -914,9 +926,25 @@ function openHistory(id){
   if (!a) return;
   let range = parseRange();
   try { range = parseRange(localStorage.getItem(HIST_KEY)); } catch {}
-  histState = { id, label: a.label || a.id, range, records: null, summary: null, intervalMs: 300000, seq: 0, opener: document.activeElement };
+  histState = { kind: 'account', id, label: a.label || a.id, range, records: null, summary: null, intervalMs: 300000, seq: 0, opener: document.activeElement };
   $('#hist-title').textContent = histState.label;
   $('#hist-sub').textContent = a.tier || '';
+  histChart.classList.remove('is-fleet');
+  hist.style.display = 'flex';
+  $('#hist-x').focus();
+  loadHistory();
+}
+
+// The fleet bar over time: GET /api/history/fleet replays the fleet math at
+// every logged poll (src/history.mjs fleetHistory).
+function openFleetHistory(){
+  let range = parseRange();
+  try { range = parseRange(localStorage.getItem(HIST_KEY)); } catch {}
+  const n = (latest?.accounts || []).length;
+  histState = { kind: 'fleet', label: 'Fleet capacity', range, records: null, summary: null, intervalMs: 300000, seq: 0, opener: document.activeElement };
+  $('#hist-title').textContent = 'Fleet capacity';
+  $('#hist-sub').textContent = n ? `${n} account${n === 1 ? '' : 's'}, plan-weighted` : '';
+  histChart.classList.add('is-fleet');
   hist.style.display = 'flex';
   $('#hist-x').focus();
   loadHistory();
@@ -946,10 +974,11 @@ async function loadHistory(){
   if (!s) return;
   const seq = ++s.seq;
   renderHistRange();
+  if (!s.records) histChart.innerHTML = '<div class="hist-empty">Loading&hellip;</div>';
+  if (s.kind === 'fleet') return loadFleet(s, seq);
   const q = historyQuery(s.id, s.range);
   $('#hist-csv').href = `/api/history?${q}&format=csv`;
   $('#hist-csv').style.display = DEMO ? 'none' : '';
-  if (!s.records) histChart.innerHTML = '<div class="hist-empty">Loading&hellip;</div>';
   try {
     let records, summary, intervalMs = 300000;
     if (DEMO) ({ records, summary } = demoHistory(s.id, s.range));
@@ -971,6 +1000,22 @@ async function loadHistory(){
   }
 }
 
+async function loadFleet(s, seq){
+  const q = fleetQuery(s.range);
+  $('#hist-csv').href = `/api/history/fleet?${q}`;
+  $('#hist-csv').textContent = 'open as JSON';
+  $('#hist-csv').style.display = DEMO ? 'none' : '';
+  try {
+    const d = DEMO ? demoFleetHistory(s.range)
+      : await fetch(`/api/history/fleet?${q}`, { cache: 'no-store' }).then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)));
+    if (histState !== s || seq !== s.seq) return;
+    Object.assign(s, { records: d.points || [], summary: d.summary || null, intervalMs: d.intervalMs || 300000 });
+    renderFleetHistory();
+  } catch (e) {
+    if (histState === s && seq === s.seq) histChart.innerHTML = `<div class="hist-empty">Could not load fleet history (${esc(e.message)}). Is the engine running?</div>`;
+  }
+}
+
 function lineSwatch(key, dashed){
   return `<svg width="18" height="8" aria-hidden="true"><line x1="1" y1="4" x2="17" y2="4" stroke="${SERIES_COLOR[key]}" stroke-width="2" stroke-linecap="round"${dashed ? ' stroke-dasharray="4 3"' : ''}/></svg>`;
 }
@@ -985,6 +1030,7 @@ function durText(ms){
 
 function renderHistory(){
   const s = histState;
+  $('#hist-csv').textContent = 'open as CSV';
   const { series, omitted } = seriesFor(s.records);
   $('#hist-legend').innerHTML = series.map((sr) => `<span class="k">${lineSwatch(sr.key, sr.dashed)}${esc(sr.label)}</span>`).join('')
     + (omitted.length ? `<span class="omit">${esc(omitted.join(', '))} not drawn</span>` : '');
@@ -1026,6 +1072,7 @@ function histDomain(s){
 
 function drawHistChart(){
   const s = histState;
+  if (s.kind === 'fleet') return drawFleetChart();
   const recs = s.records || [];
   if (!recs.length) { histChart.innerHTML = '<div class="hist-empty">No history for this account in this range yet. The engine logs every account every few minutes.</div>'; return; }
   const W = Math.max(280, histChart.clientWidth || 800), H = histChart.clientHeight || 290;
@@ -1086,15 +1133,171 @@ function drawHistChart(){
   });
 }
 
+
+// ---- fleet capacity over time ----
+const FLEET_COLOR = { locked: 'var(--s-weekly)', soon: 'var(--s-session)', blocked: 'var(--s-model)', pace: 'var(--ink-2)' };
+const areaSwatch = (c, op) => `<svg width="14" height="10" aria-hidden="true"><rect x="0.5" y="0.5" width="13" height="9" rx="2" fill="${c}" fill-opacity="${op}"/></svg>`;
+const plainSwatch = (c, dashed) => `<svg width="18" height="8" aria-hidden="true"><line x1="1" y1="4" x2="17" y2="4" stroke="${c}" stroke-width="2" stroke-linecap="round"${dashed ? ' stroke-dasharray="4 3"' : ''}/></svg>`;
+
+function renderFleetHistory(){
+  const s = histState, sm = s.summary;
+  $('#hist-legend').innerHTML = [
+    `<span class="k">${areaSwatch(FLEET_COLOR.locked, 0.85)}Locked until a weekly reset</span>`,
+    `<span class="k">${areaSwatch(FLEET_COLOR.soon, 0.6)}Back within 5h</span>`,
+    `<span class="k">${plainSwatch(FLEET_COLOR.blocked)}Accounts blocked</span>`,
+    `<span class="k">${plainSwatch(FLEET_COLOR.pace)}Weekly burn vs pace</span>`,
+  ].join('');
+  const pct = (v) => (v == null ? '&mdash;' : `${Math.round(v)}<small>%</small>`);
+  const th = latest?.thresholds || { warnPct: 70, critPct: 90 };
+  const tiles = sm ? [
+    ['Avg used', pct(sm.avgUsedPct), 'Average plan-weighted fleet usage over the range (the fleet bar’s number)'],
+    ['Peak used', pct(sm.maxUsedPct), 'Highest fleet usage in the range'],
+    ['Lowest free', pct(sm.minFreePct), 'The least free capacity the fleet had at any poll'],
+    ['Any blocked', durText(sm.blockedMs || 0), 'Time with at least one account at 100% (session or weekly)'],
+    ['Peak blocked', sm.peakBlocked == null ? '&mdash;' : `${sm.peakBlocked}<small> of ${sm.maxAccounts}</small>`, 'Most accounts blocked at the same time'],
+    ['Avg burn', sm.avgPaceRatio == null ? '&mdash;' : `${sm.avgPaceRatio.toFixed(1)}<small>&times;</small>`, 'Weekly usage vs the share of each weekly window elapsed, plan-weighted; 1× is sustainable'],
+  ] : [];
+  if (sm?.atLimitMs) tiles.splice(3, 0, ['Fleet at ' + th.critPct + '%+', durText(sm.atLimitMs), `Time with the whole fleet at ${th.critPct}% or more used`]);
+  $('#hist-stats').innerHTML = tiles.map(([l, v, t]) => `<div class="st" title="${esc(t)}"><div class="sl">${esc(l)}</div><div class="sv">${v}</div></div>`).join('');
+  const step = { '15m': '15 min', '1h': 'hour', '3h': '3 h' }[new URLSearchParams(fleetQuery(s.range)).get('step')];
+  const dom = histDomain(s);
+  $('#hist-note').textContent = `${step ? `one point per ${step}` : `a point every ${Math.round(s.intervalMs / MINUTE)} min`} · same math as the fleet bar: plan-weighted, an account counts its binding window${dom.clipped ? ` · history starts ${fmtDay(new Date(dom.from).toISOString())}` : ''}`;
+  drawFleetChart();
+}
+
+function drawFleetChart(){
+  const s = histState, pts = s.records || [], sm = s.summary || {};
+  if (!pts.some((p) => p.usedPct != null)) { histChart.innerHTML = '<div class="hist-empty">No fleet history in this range yet. The engine logs every account every few minutes.</div>'; return; }
+  const W = Math.max(280, histChart.clientWidth || 800), H = histChart.clientHeight || 400;
+  const m = { l: 44, r: 10, t: 8, b: 24 }, gapY = 22;
+  const avail = H - m.t - m.b - 2 * gapY;
+  const A = { top: m.t, h: Math.round(avail * 0.58) };
+  const B = { top: A.top + A.h + gapY, h: Math.round(avail * 0.2) };
+  const C = { top: B.top + B.h + gapY, h: avail - A.h - B.h };
+  const { from, until } = histDomain(s);
+  const pw = W - m.l - m.r;
+  const x = (t) => m.l + ((t - from) / (until - from)) * pw;
+  const f = (n) => n.toFixed(1);
+  const yA = (v) => A.top + (1 - Math.max(0, Math.min(100, v)) / 100) * A.h;
+  const maxN = Math.max(1, sm.maxAccounts || Math.max(...pts.map((p) => p.total || 0)));
+  const yB = (n) => B.top + (1 - n / maxN) * B.h;
+  const paces = pts.map((p) => p.paceRatio).filter((v) => v != null);
+  // Right after a weekly reset little of the week has elapsed and the ratio
+  // spikes; cap the axis at 4x so the usual 0.5-2x range stays readable.
+  const rMax = Math.min(4, Math.max(2, Math.ceil(Math.max(0, ...paces) * 2) / 2));
+  const yC = (r) => C.top + (1 - Math.min(r, rMax) / rMax) * C.h;
+  const th = latest?.thresholds || { warnPct: 70, critPct: 90 };
+  const gap = fleetGapMs(s.range);
+
+  // Runs: break at missing fleet numbers and at gaps between points.
+  const runs = [];
+  let run = null, lastT = null;
+  for (const p of pts) {
+    const t = Date.parse(p.ts);
+    if (p.usedPct == null) { run = null; lastT = t; continue; }
+    if (!run || t - lastT > gap) { run = []; runs.push(run); }
+    run.push({ t, p });
+    lastT = t;
+  }
+  const hline = (y) => `<line x1="${m.l}" x2="${W - m.r}" y1="${f(y)}" y2="${f(y)}"/>`;
+  const lbl = (y, txt) => `<text x="${m.l - 8}" y="${f(y + 3.5)}" text-anchor="end">${txt}</text>`;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fleet capacity over ${esc(RANGES[s.range].label)}: used share split into locked and back within 5 hours, accounts blocked, and weekly burn versus pace">`;
+  svg += '<g class="grid">' + [yA(0), yA(50), yA(100), yB(0), yB(maxN), yC(0)].map(hline).join('') + '</g>';
+  svg += '<g class="thr">' + [th.warnPct, th.critPct].map((v) => hline(yA(v)) + lbl(yA(v), v)).join('') + hline(yC(1)) + '</g>';
+  // Capacity panel: stacked areas, locked at the bottom, back-within-5h on top of it.
+  for (const r of runs) {
+    const top = (q) => q.p.lockedPct + q.p.backSoonPct;
+    const fwd = (fn) => r.map((q) => `${f(x(q.t))},${f(fn(q))}`).join('L');
+    const back = (fn) => [...r].reverse().map((q) => `${f(x(q.t))},${f(fn(q))}`).join('L');
+    const x0 = f(x(r[0].t)), x1 = f(x(r[r.length - 1].t));
+    svg += `<path d="M${x0},${f(yA(0))}L${fwd((q) => yA(q.p.lockedPct))}L${x1},${f(yA(0))}Z" fill="${FLEET_COLOR.locked}" fill-opacity="0.85"/>`;
+    svg += `<path d="M${fwd((q) => yA(top(q)))}L${back((q) => yA(q.p.lockedPct))}Z" fill="${FLEET_COLOR.soon}" fill-opacity="0.6"/>`;
+    svg += `<path class="sep" d="M${fwd((q) => yA(q.p.lockedPct))}"/>`;
+    // Blocked: a step line (the count holds until the next poll).
+    let d = '';
+    r.forEach((q, i) => { d += i ? `H${f(x(q.t))}V${f(yB(q.p.blocked))}` : `M${f(x(q.t))},${f(yB(q.p.blocked))}`; });
+    svg += `<path class="ln" d="${d}" stroke="${FLEET_COLOR.blocked}"/>`;
+    // Pace: a plain line; skips points where no weekly window had enough elapsed time.
+    let dp = '', pen = false;
+    for (const q of r) {
+      if (q.p.paceRatio == null) { pen = false; continue; }
+      dp += `${pen ? 'L' : 'M'}${f(x(q.t))},${f(yC(q.p.paceRatio))}`;
+      pen = true;
+    }
+    if (dp) svg += `<path class="ln" d="${dp}" stroke="${FLEET_COLOR.pace}"/>`;
+  }
+  const { step, ticks } = timeTicks(from, until, W < 560 ? 4 : 7);
+  svg += '<g class="axis">' + lbl(yA(0), '0%') + lbl(yA(50), '50%') + lbl(yA(100), '100%')
+    + lbl(yB(0), '0') + lbl(yB(maxN), maxN) + lbl(yC(1), '1&times;') + lbl(yC(rMax), `${rMax}&times;`)
+    + ticks.map((t) => `<text x="${f(x(t))}" y="${H - 6}" text-anchor="middle">${esc(tickLabel(t, step))}</text>`).join('') + '</g>';
+  svg += `<text class="ptitle" x="${m.l}" y="${B.top - 7}">Accounts blocked</text><text class="ptitle" x="${m.l}" y="${C.top - 7}">Weekly burn vs sustainable pace</text>`;
+  svg += `<g class="hover" style="display:none"><line class="cross" y1="${m.t}" y2="${H - m.b}"/>`
+    + ['used', 'locked', 'blocked', 'pace'].map((k) => `<circle class="dot" r="4" data-k="${k}" fill="${k === 'used' ? FLEET_COLOR.soon : FLEET_COLOR[k]}"/>`).join('') + '</g>';
+  svg += `<rect x="${m.l}" y="0" width="${pw}" height="${H}" fill="transparent"/></svg><div class="hist-tip" style="display:none"></div>`;
+  histChart.innerHTML = svg;
+
+  const live = pts.filter((p) => p.usedPct != null);
+  const svgEl = histChart.querySelector('svg'), hov = svgEl.querySelector('.hover'), tip = histChart.querySelector('.hist-tip');
+  const hide = () => { hov.style.display = 'none'; tip.style.display = 'none'; };
+  const dot = (k, y) => { const c = hov.querySelector(`[data-k="${k}"]`); c.style.display = y == null ? 'none' : ''; if (y != null) { c.setAttribute('cx', f(cxNow)); c.setAttribute('cy', f(y)); } };
+  let cxNow = 0;
+  svgEl.addEventListener('pointerleave', hide);
+  svgEl.addEventListener('pointermove', (e) => {
+    const box = svgEl.getBoundingClientRect();
+    const t = from + (((e.clientX - box.left) * (W / box.width) - m.l) / pw) * (until - from);
+    const p = nearest(live, t);
+    const pt = p ? Date.parse(p.ts) : NaN;
+    if (!p || Math.abs(pt - t) > gap) return hide();
+    cxNow = x(pt);
+    hov.style.display = '';
+    const cross = hov.querySelector('.cross');
+    cross.setAttribute('x1', f(cxNow)); cross.setAttribute('x2', f(cxNow));
+    dot('used', yA(p.lockedPct + p.backSoonPct)); dot('locked', yA(p.lockedPct)); dot('blocked', yB(p.blocked)); dot('pace', p.paceRatio == null ? null : yC(p.paceRatio));
+    const row = (sw, label, val) => `<div class="tr">${sw}<span>${label}</span><b>${val}</b></div>`;
+    tip.innerHTML = `<div class="tt">${esc(fmtDay(p.ts))} ${esc(fmtClock(p.ts))}${p.stale ? ` · ${p.stale} cached` : ''}</div>`
+      + row(areaSwatch('var(--ink-3)', 0.5), 'Used', `${Math.round(p.usedPct)}%`)
+      + row(areaSwatch(FLEET_COLOR.locked, 0.85), '&nbsp;&nbsp;locked until weekly', `${Math.round(p.lockedPct)}%`)
+      + row(areaSwatch(FLEET_COLOR.soon, 0.6), '&nbsp;&nbsp;back within 5h', `${Math.round(p.backSoonPct)}%`)
+      + row(areaSwatch('var(--hair)', 1), 'Free', `${Math.round(p.freePct)}%`)
+      + row(plainSwatch(FLEET_COLOR.blocked), 'Blocked', `${p.blocked} of ${p.total}`)
+      + row(plainSwatch(FLEET_COLOR.pace), 'Weekly burn', p.paceRatio == null ? '&mdash;' : `${p.paceRatio.toFixed(1)}&times; pace`);
+    tip.style.display = '';
+    const cpx = cxNow * (box.width / W), tw = tip.offsetWidth;
+    tip.style.left = `${cpx + 14 + tw > box.width ? cpx - 14 - tw : cpx + 14}px`;
+  });
+}
+
+// Demo fleet history (?demo): the demo accounts' traces run through the same
+// computeFleet the fleet bar uses.
+function demoFleetHistory(range){
+  const stepMs = { '24h': 5 * MINUTE, '7d': 15 * MINUTE, '30d': HOUR_MS, '90d': 3 * HOUR_MS }[parseRange(range)];
+  const accts = demoData().accounts;
+  const traces = accts.map((a) => demoHistory(a.id, range, stepMs).records);
+  const points = traces[0].map((r0, i) => {
+    const now = Date.parse(r0.ts);
+    const accounts = accts.map((a, j) => {
+      const r = traces[j][i];
+      const next = (period) => new Date(Math.ceil(now / period) * period).toISOString();
+      return { id: a.id, label: a.label, tier: a.tier, usage: { session: { pct: r.session.pct, resetsAt: next(5 * HOUR_MS) }, weekly: { pct: r.weekly.pct, resetsAt: next(7 * DAY_MS) }, weeklyModels: [] } };
+    });
+    const fl = computeFleet(accounts, { now });
+    return { ts: r0.ts, usedPct: fl.usedPct, freePct: fl.freePct, backSoonPct: fl.backSoonPct, lockedPct: fl.lockedPct, blocked: fl.accounts.blocked, counted: fl.accounts.counted, total: fl.accounts.total, paceRatio: fl.pace.ratio, stale: 0 };
+  });
+  const used = points.map((p) => p.usedPct);
+  const summary = { avgUsedPct: used.reduce((a, b) => a + b, 0) / used.length, maxUsedPct: Math.max(...used), minFreePct: Math.min(...points.map((p) => p.freePct)), blockedMs: points.filter((p) => p.blocked).length * stepMs, peakBlocked: Math.max(...points.map((p) => p.blocked)), maxAccounts: accts.length, avgPaceRatio: 1.2 };
+  return { points, summary, intervalMs: stepMs };
+}
+
 // Demo history (?demo): a plausible week-shaped trace per fake account so the
 // view can be previewed without an engine. Deterministic per account id.
-function demoHistory(id, range){
+function demoHistory(id, range, stepOverride){
   const r = RANGES[range];
-  const stepMs = r.step === '30m' ? 30 * MINUTE : r.step === '2h' ? 2 * HOUR_MS : 5 * MINUTE;
+  const stepMs = stepOverride || (r.step === '30m' ? 30 * MINUTE : r.step === '2h' ? 2 * HOUR_MS : 5 * MINUTE);
   let seed = [...String(id)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
   const phase = rnd() * 7 * DAY_MS, rate = 0.55 + rnd() * 0.6, burst = 0.5 + rnd() * 0.6;
-  const now = Date.now(), gapAt = now - 2 * DAY_MS;
+  const now = Math.floor(Date.now() / stepMs) * stepMs, gapAt = now - 2 * DAY_MS;
   const records = [];
   for (let t = now - r.ms; t <= now; t += stepMs) {
     if (t > gapAt - 3 * HOUR_MS && t < gapAt) continue;   // an engine restart

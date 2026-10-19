@@ -7,7 +7,7 @@ import { loadConfig, REFRESH_SKEW_MS } from './config.mjs';
 import { createCredStore, newAccountId } from './credstore.mjs';
 import * as oauthLib from './oauth.mjs';
 import * as usageLib from './usage.mjs';
-import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv, usageFromRecord, latestPerAccount } from './history.mjs';
+import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv, usageFromRecord, latestPerAccount, fleetHistory } from './history.mjs';
 import { computeFleet } from './fleet.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -300,6 +300,22 @@ export function createServer(deps = {}) {
         return sendJson(res, 200, {
           since: new Date(q.since).toISOString(), until: new Date(q.until).toISOString(),
           step: url.searchParams.get('step') || null, count: records.length, dir: history.dir, records,
+        });
+      }
+
+      // The fleet bar's numbers at every logged poll (see fleetHistory), for
+      // the fleet-capacity chart. `step` thins the points; the summary covers
+      // every poll in the window.
+      if (req.method === 'GET' && path === '/api/history/fleet') {
+        if (!history) return sendJson(res, 404, { error: 'history disabled' });
+        const q = historyQuery(url);
+        if (q.error) return sendJson(res, 400, { error: q.error });
+        const records = await history.query({ since: q.since, until: q.until, limit: 0 });
+        const intervalMs = config.historyIntervalMs || 300_000;
+        const out = fleetHistory(records, { ...thresholds, intervalMs, stepMs: q.step });
+        return sendJson(res, 200, {
+          since: new Date(q.since).toISOString(), until: new Date(q.until).toISOString(),
+          step: url.searchParams.get('step') || null, intervalMs, thresholds, ...out,
         });
       }
 

@@ -12,6 +12,8 @@ Personal tool: a tailnet-private dashboard that aggregates Claude Code **session
 - `src/fleet.mjs` — fleet bar math (weights, binding window, relief events, pace); `FLEET_MODELS` names the models whose per-model weekly limits count (Opus)
 - `src/board.mjs` — board order: headroom default + click-to-sort columns; mirrored in `macos/App/BoardSort.swift`
 - `src/usage-chart.mjs` — account usage-over-time chart math (ranges, series, gap splitting, time ticks); served as `/usage-chart.mjs` to the page's chart and mirrored in `macos/App/HistorySheet.swift` (Swift Charts)
+- `macos/App/FleetHistorySheet.swift` — fleet capacity over time (three Swift Charts panels, one hover layer via anchor preferences); data from `GET /api/history/fleet` (`fleetHistory` in `src/history.mjs`, which replays `computeFleet` at every logged poll)
+- The LaunchAgent runs with `ProcessType` Interactive; without it launchd throttles the engine (~15x slower history reads)
 - `src/history.mjs` — usage history: JSONL day files in `history/`, background poller (`startUsagePoller`), `query`/`summarize`; served at `GET /api/history` and `/api/history/summary`
 - `web/index.html` — self-contained dashboard (vanilla JS/CSS)
 - `bin/claude-usage` — CLI table from the running server; `claude-usage history --since 7d` for trends

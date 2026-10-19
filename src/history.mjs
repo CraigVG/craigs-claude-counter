@@ -9,6 +9,7 @@
 // ever written here — only labels, tiers and percentages.
 import { appendFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { computeFleet } from './fleet.mjs';
 
 const FILE_RE = /^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const DAY_MS = 86_400_000;
@@ -169,6 +170,60 @@ export function summarize(records, { warnPct = 70, critPct = 90 } = {}) {
     });
   }
   return out;
+}
+
+// The fleet picture at every logged poll. One poll writes every account with
+// the same ts, so records are grouped by ts, turned back into /api/usage
+// accounts, and run through the same computeFleet the live fleet bar uses,
+// with `now` set to that poll (so "back within 5h" and pace are as of then).
+// `stepMs` thins the returned points (first poll per bucket); the summary
+// always covers every poll. Records must be sorted by ts.
+export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs = 300_000, stepMs = null } = {}) {
+  const polls = [];
+  let cur = null;
+  for (const r of records || []) {
+    if (!cur || cur.ts !== r.ts) { cur = { ts: r.ts, recs: [] }; polls.push(cur); }
+    cur.recs.push(r);
+  }
+  const all = polls.map(({ ts, recs }) => {
+    const accounts = recs.map((r) => ({ id: r.account, label: r.label, tier: r.tier, usage: usageFromRecord(r, { warnPct, critPct }) }));
+    const f = computeFleet(accounts, { now: Date.parse(ts), warnPct, critPct });
+    return {
+      ts,
+      usedPct: f.usedPct, freePct: f.freePct, backSoonPct: f.backSoonPct, lockedPct: f.lockedPct,
+      blocked: f.accounts.blocked, counted: f.accounts.counted, total: f.accounts.total,
+      capacity: f.weightTotal, paceRatio: f.pace.ratio, exhausting: f.pace.exhausting.length,
+      stale: recs.filter((r) => r.stale).length,
+    };
+  });
+  const live = all.filter((p) => p.usedPct != null);
+  const avg = (xs) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
+  const paces = live.map((p) => p.paceRatio).filter((v) => v != null);
+  const summary = {
+    polls: all.length,
+    first: all[0]?.ts ?? null,
+    last: all[all.length - 1]?.ts ?? null,
+    avgUsedPct: avg(live.map((p) => p.usedPct)),
+    maxUsedPct: live.length ? Math.max(...live.map((p) => p.usedPct)) : null,
+    avgFreePct: avg(live.map((p) => p.freePct)),
+    minFreePct: live.length ? Math.min(...live.map((p) => p.freePct)) : null,
+    peakBlocked: live.length ? Math.max(...live.map((p) => p.blocked)) : null,
+    blockedMs: live.filter((p) => p.blocked > 0).length * intervalMs,
+    atLimitMs: live.filter((p) => p.usedPct >= critPct).length * intervalMs,
+    avgPaceRatio: paces.length ? Math.round((paces.reduce((a, b) => a + b, 0) / paces.length) * 100) / 100 : null,
+    maxAccounts: all.length ? Math.max(...all.map((p) => p.total)) : 0,
+  };
+  let points = all;
+  if (stepMs) {
+    let last = null;
+    points = all.filter((p) => {
+      const b = Math.floor(Date.parse(p.ts) / stepMs);
+      if (b === last) return false;
+      last = b;
+      return true;
+    });
+  }
+  return { points, summary };
 }
 
 export function toCsv(records) {

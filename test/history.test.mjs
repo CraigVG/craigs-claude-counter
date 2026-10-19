@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHistory, recordFrom, parseTime, parseStep, summarize, toCsv, startUsagePoller } from '../src/history.mjs';
+import { createHistory, recordFrom, parseTime, parseStep, summarize, toCsv, startUsagePoller, fleetHistory } from '../src/history.mjs';
 
 const H = 3_600_000, D = 24 * H;
 const iso = (ms) => new Date(ms).toISOString();
@@ -137,6 +137,42 @@ test('summarize ignores sub-second jitter in reset times and counts real resets'
     mk(4, '2026-10-24T13:00:00.120000+00:00'),
   ];
   assert.deepEqual(summarize(recs)[0].resets, { session: 0, weekly: 1 });
+});
+
+test('fleetHistory rebuilds the fleet bar at every poll and summarizes all polls', () => {
+  const t0 = Date.parse('2026-10-19T00:00:00Z');
+  const rec = (i, id, tier, session, weekly) => recordFrom({
+    id, label: id, tier,
+    usage: {
+      session: { pct: session, resetsAt: iso(t0 + i * 5 * 60_000 + 2 * H) },
+      weekly: { pct: weekly, resetsAt: iso(t0 + 3 * 24 * H) },
+    },
+  }, iso(t0 + i * 5 * 60_000));
+  const recs = [
+    rec(0, 'big', 'Max 20x', 0, 50), rec(0, 'small', 'Pro', 0, 0),
+    rec(1, 'big', 'Max 20x', 100, 50), rec(1, 'small', 'Pro', 0, 100),
+    rec(2, 'big', 'Max 20x', 0, 60), rec(2, 'small', 'Pro', 0, 20),
+  ];
+  const { points, summary } = fleetHistory(recs, { intervalMs: 5 * 60_000 });
+  assert.equal(points.length, 3);
+  // Weights 7 (20x) and 1 (Pro): poll 0 = (7*50 + 1*0) / 8 = 43.75.
+  assert.equal(points[0].usedPct, 43.8);
+  assert.equal(points[0].total, 2);
+  assert.equal(points[0].capacity, 8);
+  // Poll 1: both blocked (big by its session, small by its week).
+  assert.equal(points[1].blocked, 2);
+  assert.equal(points[1].usedPct, 100);
+  assert.ok(points[1].backSoonPct > 0, 'the session reset within 5h is back soon');
+  assert.equal(summary.polls, 3);
+  assert.equal(summary.maxUsedPct, 100);
+  assert.equal(summary.peakBlocked, 2);
+  assert.equal(summary.blockedMs, 5 * 60_000);
+  assert.equal(summary.atLimitMs, 5 * 60_000);
+  // Thinning keeps the first poll per bucket; the summary still covers all.
+  const thin = fleetHistory(recs, { intervalMs: 5 * 60_000, stepMs: 15 * 60_000 });
+  assert.equal(thin.points.length, 1);
+  assert.equal(thin.summary.polls, 3);
+  assert.deepEqual(fleetHistory([]).points, []);
 });
 
 test('summarize counts overage spent across a billing-cycle reset', () => {

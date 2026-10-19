@@ -22,6 +22,25 @@ export const RANGES = {
 };
 export const DEFAULT_RANGE = '7d';
 
+// The fleet chart thins harder (the fleet number moves slowly and each point
+// costs a fleet computation upstream): one point per this step.
+export const FLEET_STEPS = { '24h': null, '7d': '15m', '30d': '1h', '90d': '3h' };
+
+// Query string for GET /api/history/fleet, and the gap beyond which fleet
+// points are not joined (a missing poll is 5 min; a missing step bucket is
+// a real outage).
+export function fleetQuery(range) {
+  const key = parseRange(range);
+  const p = new URLSearchParams({ since: key });
+  if (FLEET_STEPS[key]) p.set('step', FLEET_STEPS[key]);
+  return p.toString();
+}
+export function fleetGapMs(range) {
+  const key = parseRange(range);
+  const step = { '15m': 15 * MIN, '1h': HOUR, '3h': 3 * HOUR }[FLEET_STEPS[key]] || 0;
+  return Math.max(RANGES[key].gapMs, 3 * step);
+}
+
 export function parseRange(s) {
   return RANGES[s] ? s : DEFAULT_RANGE;
 }

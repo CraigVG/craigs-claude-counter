@@ -60,6 +60,16 @@ final class CounterModel: ObservableObject {
     func openReLogin(_ a: AccountDTO) { activeSheet = .relogin(id: a.id, label: a.name) }
     func openRemove(_ a: AccountDTO) { activeSheet = .remove(a) }
     func openHistory(_ a: AccountDTO) { activeSheet = .history(a) }
+    func openFleetHistory() { activeSheet = .fleetHistory }
+
+    /// The fleet bar's numbers at every logged poll (GET /api/history/fleet).
+    func fleetHistory(range: HistoryRange) async throws -> FleetHistoryResp {
+        var c = URLComponents(url: baseURL.appendingPathComponent("api/history/fleet"), resolvingAgainstBaseURL: false)!
+        c.queryItems = [URLQueryItem(name: "since", value: range.rawValue)] + (range.fleetStep.map { [URLQueryItem(name: "step", value: $0)] } ?? [])
+        let (data, resp) = try await URLSession.shared.data(from: c.url!)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return try JSONDecoder().decode(FleetHistoryResp.self, from: data)
+    }
 
     /// One account's logged usage for a range, plus the engine's summary of it.
     func history(accountId: String, range: HistoryRange) async throws -> ([HistoryRecordDTO], HistorySummaryDTO?, Double?) {
@@ -116,12 +126,14 @@ enum ActiveSheet: Identifiable {
     case relogin(id: String, label: String)
     case remove(AccountDTO)
     case history(AccountDTO)
+    case fleetHistory
     var id: String {
         switch self {
         case .add: return "add"
         case .relogin(let id, _): return "relogin-\(id)"
         case .remove(let a): return "remove-\(a.id)"
         case .history(let a): return "history-\(a.id)"
+        case .fleetHistory: return "fleet-history"
         }
     }
 }

@@ -73,7 +73,7 @@ struct DashboardView: View {
                         Spacer(minLength: 0)
                     } else {
                         if let f = fleet {
-                            FleetBar(fleet: f, compact: compact, narrow: narrow)
+                            FleetBar(fleet: f, compact: compact, narrow: narrow, onOpen: { model.openFleetHistory() })
                         }
                         SummaryStrip(accounts: accounts, compact: compact)
                         ScrollView(showsIndicators: false) {
@@ -96,6 +96,8 @@ struct DashboardView: View {
                 RemoveSheet(model: model, account: a)
             case .history(let a):
                 HistorySheet(model: model, account: a)
+            case .fleetHistory:
+                FleetHistorySheet(model: model, accountCount: model.snapshot?.accounts.count ?? 0)
             }
         }
     }
@@ -556,6 +558,7 @@ struct FleetBar: View {
     let fleet: FleetDTO
     var compact: Bool = false
     var narrow: Bool = false
+    var onOpen: () -> Void = {}
 
     private var fill: Color { fleet.fillColor }
     private var numColor: Color { fleet.tone == .normal ? Theme.ink : fill }
@@ -572,6 +575,9 @@ struct FleetBar: View {
         .background(Theme.panel)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hair, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture(perform: onOpen)
+        .help("Click to see fleet capacity over time")
     }
 
     private var head: some View {
@@ -605,6 +611,9 @@ struct FleetBar: View {
                 .font(Theme.mono(11.5, .regular)).lineLimit(1).minimumScaleFactor(0.8)
                 .help("Weekly usage divided by the fraction of each weekly window already elapsed, weighted by plan")
             }
+            Button(action: onOpen) { Text(narrow ? "↗" : "Over time ›").font(Theme.mono(11, .regular)) }
+                .buttonStyle(PillButton(color: Theme.ink3, subtle: true))
+                .help("Fleet capacity and usage over time")
         }
     }
 
