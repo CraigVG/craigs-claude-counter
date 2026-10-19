@@ -269,7 +269,7 @@ export function createServer(deps = {}) {
       // The fleet aggregation and board ordering modules, shared with the
       // browser so the page recomputes countdowns, demo data and column sorts
       // with the exact server logic.
-      if (req.method === 'GET' && (path === '/fleet.mjs' || path === '/board.mjs')) {
+      if (req.method === 'GET' && (path === '/fleet.mjs' || path === '/board.mjs' || path === '/usage-chart.mjs')) {
         const js = await readFile(join(__dirname, path.slice(1)), 'utf8');
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
         return res.end(js);

@@ -64,6 +64,26 @@ final class CounterModel: ObservableObject {
     func openAddAccount() { activeSheet = .add }
     func openReLogin(_ a: AccountDTO) { activeSheet = .relogin(id: a.id, label: a.name) }
     func openRemove(_ a: AccountDTO) { activeSheet = .remove(a) }
+    func openHistory(_ a: AccountDTO) { activeSheet = .history(a) }
+
+    /// One account's logged usage for a range, plus the engine's summary of it.
+    func history(accountId: String, range: HistoryRange) async throws -> ([HistoryRecordDTO], HistorySummaryDTO?, Double?) {
+        func url(_ path: String, _ items: [URLQueryItem]) -> URL {
+            var c = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+            c.queryItems = items
+            return c.url!
+        }
+        var q = [URLQueryItem(name: "account", value: accountId), URLQueryItem(name: "since", value: range.rawValue), URLQueryItem(name: "limit", value: "0")]
+        if let step = range.step { q.append(URLQueryItem(name: "step", value: step)) }
+        async let hist = URLSession.shared.data(from: url("api/history", q))
+        async let summ = URLSession.shared.data(from: url("api/history/summary", [URLQueryItem(name: "account", value: accountId), URLQueryItem(name: "since", value: range.rawValue)]))
+        let (hData, hResp) = try await hist
+        guard (hResp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        // `account` also matches label substrings; keep only this account's rows.
+        let records = try JSONDecoder().decode(HistoryResp.self, from: hData).records.filter { $0.account == accountId }
+        let summary = (try? await summ).flatMap { try? JSONDecoder().decode(HistorySummaryResp.self, from: $0.0) }
+        return (records, summary?.accounts.first { $0.account == accountId }, summary?.intervalMs)
+    }
 
     func startLogin(label: String, replaceId: String?) async -> LoginStartResp? {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/login/start"))
@@ -100,11 +120,13 @@ enum ActiveSheet: Identifiable {
     case add
     case relogin(id: String, label: String)
     case remove(AccountDTO)
+    case history(AccountDTO)
     var id: String {
         switch self {
         case .add: return "add"
         case .relogin(let id, _): return "relogin-\(id)"
         case .remove(let a): return "remove-\(a.id)"
+        case .history(let a): return "history-\(a.id)"
         }
     }
 }

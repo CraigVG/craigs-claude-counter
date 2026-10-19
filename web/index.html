@@ -225,6 +225,52 @@
   .modal .msg.err { color: var(--alarm); } .modal .msg.ok { color: var(--ok); }
   .modal a.authlink { word-break: break-all; color: var(--accent); font-size: 12px; }
   .modal .muted { color: var(--ink-3); font-size: 12px; }
+
+  /* Account history (click a row). Series colors validated as a set on the
+     panel surface (dataviz validator, all pairs): weekly blue, session aqua,
+     per-model weekly orange (dashed). The 70/90 guides stay neutral gray so
+     orange never reads as the amber warning color. */
+  :root { --s-weekly: #3987e5; --s-session: #199e70; --s-model: #d95926; }
+  .row[data-id] { cursor: pointer; }
+  .acct .email { all: unset; font-size: 14px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border-radius: 4px; max-width: 100%; }
+  .row:hover .acct .email { text-decoration: underline; text-decoration-color: var(--ink-4); text-underline-offset: 3px; }
+  .acct .email:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .modal.hist { max-width: 940px; min-width: 0; padding: 18px 20px 16px; }
+  .modal.hist .modal-head { min-width: 0; } #hist-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .hist-chart { min-width: 0; overflow: hidden; }
+  .hist-sub { font-family: var(--mono); font-size: 11.5px; font-weight: 400; color: var(--ink-3); margin-left: 10px; }
+  .hist-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-bottom: 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--hair); border-radius: 8px; overflow: hidden; flex: none; }
+  .seg button { all: unset; cursor: pointer; font: 500 12px var(--mono); color: var(--ink-3); padding: 6px 12px; }
+  .seg button + button { border-left: 1px solid var(--hair); }
+  .seg button:hover { color: var(--ink-2); }
+  .seg button.on { color: var(--ink); background: rgba(124,147,179,0.14); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .hist-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); }
+  .hist-legend .k { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .hist-legend .omit { color: var(--ink-4); font-family: var(--mono); font-size: 11px; }
+  .hist-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(124px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .hist-stats .st { background: var(--panel-2); border: 1px solid var(--hair-soft); border-radius: 8px; padding: 9px 12px; }
+  .hist-stats .sl { font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .hist-stats .sv { font: 600 17px var(--mono); color: var(--ink); margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hist-stats .sv small { font-size: 11px; color: var(--ink-3); font-weight: 500; margin-left: 1px; }
+  .hist-chart { position: relative; height: 290px; touch-action: pan-y; }
+  .hist-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .hist-chart .grid line { stroke: var(--hair); stroke-width: 1; }
+  .hist-chart .axis text { fill: var(--ink-3); font: 10.5px var(--mono); }
+  .hist-chart .thr line { stroke: var(--ink-4); stroke-width: 1; stroke-dasharray: 3 4; }
+  .hist-chart .thr text { fill: var(--ink-4); font: 10px var(--mono); }
+  .hist-chart .ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .hist-chart .cross { stroke: var(--ink-3); stroke-width: 1; }
+  .hist-chart .dot { stroke: var(--panel); stroke-width: 2; }
+  .hist-tip { position: absolute; top: 6px; pointer-events: none; background: var(--bg); border: 1px solid var(--hair); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--ink-2); box-shadow: 0 8px 24px rgba(0,0,0,.45); white-space: nowrap; z-index: 2; }
+  .hist-tip .tt { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-bottom: 5px; }
+  .hist-tip .tr { display: flex; align-items: center; gap: 8px; line-height: 1.6; }
+  .hist-tip .tr b { margin-left: auto; padding-left: 16px; font-family: var(--mono); color: var(--ink); font-weight: 600; }
+  .hist-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink-3); font-size: 13px; text-align: center; padding: 0 20px; }
+  .hist-foot { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; font: 11px var(--mono); color: var(--ink-4); }
+  .hist-foot a { color: var(--ink-3); }
+  @media (max-width: 600px) { .hist-chart { height: 220px; } .modal.hist { padding: 14px 14px 12px; } }
   button.primary { font-family: var(--ui); background: var(--accent); border: 1px solid var(--accent); color: #0c0f13; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
   button.primary:hover { filter: brightness(1.08); }
   button.ghost { font-family: var(--ui); background: transparent; border: 1px solid var(--hair); color: var(--ink-2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
@@ -284,7 +330,7 @@
     .topbar { flex-wrap: wrap; gap: 12px; }
     .brand h1 { font-size: 16px; }
     .acct-count { display: none; }
-    .controls { flex-wrap: wrap; justify-content: flex-start; }
+    .controls { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; justify-content: flex-start; }
     .summary { display: block !important; }
     .fleet-head { flex-wrap: wrap; gap: 8px 14px; }
     .fleet-head .spacer { display: none; }
@@ -371,9 +417,23 @@
     </div>
   </div>
 
+  <div id="hist" class="modal-backdrop" style="display:none">
+    <div class="modal hist" role="dialog" aria-modal="true" aria-labelledby="hist-title">
+      <div class="modal-head"><span id="hist-title"></span><span id="hist-sub" class="hist-sub"></span><button id="hist-x" class="x" aria-label="Close">&#x2715;</button></div>
+      <div class="hist-bar">
+        <div class="seg" id="hist-range" role="group" aria-label="Time range"></div>
+        <div class="hist-legend" id="hist-legend"></div>
+      </div>
+      <div class="hist-stats" id="hist-stats"></div>
+      <div class="hist-chart" id="hist-chart"></div>
+      <div class="hist-foot"><span id="hist-note"></span><span style="flex:1"></span><a id="hist-csv" href="#" target="_blank" rel="noopener">open as CSV</a></div>
+    </div>
+  </div>
+
 <script type="module">
 import { computeFleet } from '/fleet.mjs';
 import { sortAccounts, nextSort, parseSort, SORT_COLUMNS, DEFAULT_SORT, reloginOffered } from '/board.mjs';
+import { RANGES, parseRange, historyQuery, seriesFor, segments, nearest, timeTicks } from '/usage-chart.mjs';
 const $ = (s) => document.querySelector(s);
 let latest = null;
 let lastError = null;
@@ -515,10 +575,10 @@ function rowFor(a){
     actions = `<button class="rowbtn relogin" data-relogin="${esc(a.id)}" data-label="${esc(a.label||a.id)}" title="${offer === 'due' ? 'Login due ' + esc(due) + ': sign in again now so it never lapses' : 'Login expired: sign in again'}">${offer === 'due' ? 'Re-login (due ' + esc(due) + ')' : 'Re-login'}</button>` + actions;
   }
 
-  return `<div class="grid row ${cls}">
+  return `<div class="grid row ${cls}" data-id="${esc(a.id)}">
     <div class="tick"><span></span></div>
     <div class="acct">
-      <span class="email" title="${esc(a.label||a.id)}">${esc(a.label||a.id)}</span>
+      <button type="button" class="email" data-hist title="${esc(a.label||a.id)}: show usage over time">${esc(a.label||a.id)}</button>
       ${tags.length ? `<span class="tags">${tags.join('')}</span>` : ''}
     </div>
     <div class="plan">${a.tier ? `<span class="pill">${esc(a.tier)}</span>` : '<span class="pill" style="color:var(--ink-4)">—</span>'}</div>
@@ -828,6 +888,228 @@ document.addEventListener('visibilitychange', () => { if(!document.hidden) load(
 window.addEventListener('focus', load);
 window.addEventListener('online', load);
 load();
+
+// ---- account history: click a row (or its name) to see usage over time ----
+// Reads GET /api/history (the poller's 5-minute log) and /api/history/summary.
+// Chart math lives in src/usage-chart.mjs; this draws it as inline SVG.
+const hist = $('#hist'), histChart = $('#hist-chart');
+const HIST_KEY = 'ccc.histRange';
+const SERIES_COLOR = { weekly: 'var(--s-weekly)', session: 'var(--s-session)', model: 'var(--s-model)' };
+const DRAW_ORDER = ['session', 'model', 'weekly'];   // weekly, the one that locks a week, on top
+const MINUTE = 60000, HOUR_MS = 60 * MINUTE, DAY_MS = 24 * HOUR_MS;
+let histState = null;
+
+$('#rows').addEventListener('click', (e) => {
+  if (e.target.closest('button:not([data-hist])')) return;   // Re-login / remove keep their own action
+  const row = e.target.closest('.row[data-id]');
+  if (row) openHistory(row.dataset.id);
+});
+$('#hist-x').onclick = closeHistory;
+hist.onclick = (e) => { if (e.target === hist) closeHistory(); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && histState) closeHistory(); });
+window.addEventListener('resize', () => { if (histState?.records) drawHistChart(); });
+
+function openHistory(id){
+  const a = (latest?.accounts || []).find((x) => x.id === id);
+  if (!a) return;
+  let range = parseRange();
+  try { range = parseRange(localStorage.getItem(HIST_KEY)); } catch {}
+  histState = { id, label: a.label || a.id, range, records: null, summary: null, intervalMs: 300000, seq: 0, opener: document.activeElement };
+  $('#hist-title').textContent = histState.label;
+  $('#hist-sub').textContent = a.tier || '';
+  hist.style.display = 'flex';
+  $('#hist-x').focus();
+  loadHistory();
+}
+
+function closeHistory(){
+  const opener = histState?.opener;
+  hist.style.display = 'none';
+  histState = null;
+  histChart.innerHTML = '';
+  if (opener && document.contains(opener)) opener.focus();
+}
+
+function renderHistRange(){
+  const el = $('#hist-range');
+  el.innerHTML = Object.entries(RANGES).map(([k, r]) =>
+    `<button type="button" data-range="${k}" class="${k === histState.range ? 'on' : ''}" aria-pressed="${k === histState.range}">${esc(r.label)}</button>`).join('');
+  el.querySelectorAll('[data-range]').forEach((b) => b.onclick = () => {
+    histState.range = parseRange(b.dataset.range);
+    try { localStorage.setItem(HIST_KEY, histState.range); } catch {}
+    loadHistory();
+  });
+}
+
+async function loadHistory(){
+  const s = histState;
+  if (!s) return;
+  const seq = ++s.seq;
+  renderHistRange();
+  const q = historyQuery(s.id, s.range);
+  $('#hist-csv').href = `/api/history?${q}&format=csv`;
+  $('#hist-csv').style.display = DEMO ? 'none' : '';
+  if (!s.records) histChart.innerHTML = '<div class="hist-empty">Loading&hellip;</div>';
+  try {
+    let records, summary, intervalMs = 300000;
+    if (DEMO) ({ records, summary } = demoHistory(s.id, s.range));
+    else {
+      const [h, sm] = await Promise.all([
+        fetch(`/api/history?${q}`, { cache: 'no-store' }).then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))),
+        fetch(`/api/history/summary?account=${encodeURIComponent(s.id)}&since=${s.range}`, { cache: 'no-store' }).then((r) => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      // `account` also matches label substrings; keep only this account's rows.
+      records = (h.records || []).filter((r) => r.account === s.id);
+      summary = sm?.accounts?.find((x) => x.account === s.id) || null;
+      intervalMs = sm?.intervalMs || intervalMs;
+    }
+    if (histState !== s || seq !== s.seq) return;
+    Object.assign(s, { records, summary, intervalMs });
+    renderHistory();
+  } catch (e) {
+    if (histState === s && seq === s.seq) histChart.innerHTML = `<div class="hist-empty">Could not load history (${esc(e.message)}). Is the engine running?</div>`;
+  }
+}
+
+function lineSwatch(key, dashed){
+  return `<svg width="18" height="8" aria-hidden="true"><line x1="1" y1="4" x2="17" y2="4" stroke="${SERIES_COLOR[key]}" stroke-width="2" stroke-linecap="round"${dashed ? ' stroke-dasharray="4 3"' : ''}/></svg>`;
+}
+
+function durText(ms){
+  const m = Math.round(ms / MINUTE);
+  if (m < 60) return `${m}<small>m</small>`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}<small>h</small> ${m % 60}<small>m</small>`;
+  return `${Math.floor(h / 24)}<small>d</small> ${h % 24}<small>h</small>`;
+}
+
+function renderHistory(){
+  const s = histState;
+  const { series, omitted } = seriesFor(s.records);
+  $('#hist-legend').innerHTML = series.map((sr) => `<span class="k">${lineSwatch(sr.key, sr.dashed)}${esc(sr.label)}</span>`).join('')
+    + (omitted.length ? `<span class="omit">${esc(omitted.join(', '))} not drawn</span>` : '');
+  const sm = s.summary;
+  const pct = (v) => (v == null ? '&mdash;' : `${Math.round(v)}<small>%</small>`);
+  const th = latest?.thresholds || { warnPct: 70, critPct: 90 };
+  const tiles = sm ? [
+    ['Weekly avg', pct(sm.weekly?.avg), 'Average weekly (all models) usage over the range'],
+    ['Weekly peak', pct(sm.weekly?.max), 'Highest weekly usage in the range'],
+    ['Session peak', pct(sm.session?.max), 'Highest 5-hour session usage in the range'],
+    ['At limit', durText(sm.atLimitSamples * s.intervalMs), `Time with session or weekly at ${th.critPct}% or more (from ${Math.round(s.intervalMs / MINUTE)}-minute samples)`],
+    ['Weekly resets', String(sm.resets?.weekly ?? 0), 'How many times the weekly window reset in the range'],
+  ] : [];
+  if (sm?.overage) tiles.push(['Overage spent', `$${(sm.overage.spentUsd ?? Math.max(0, sm.overage.deltaUsd)).toFixed(2)}`, 'Extra-usage dollars added in the range (billing-cycle resets do not subtract)']);
+  $('#hist-stats').innerHTML = tiles.map(([l, v, t]) => `<div class="st" title="${esc(t)}"><div class="sl">${esc(l)}</div><div class="sv">${v}</div></div>`).join('');
+  const r = RANGES[s.range];
+  const every = r.step ? `one sample per ${r.step.replace('m', ' min').replace('h', ' h')}` : `a sample every ${Math.round(s.intervalMs / MINUTE)} min`;
+  const dom = histDomain(s);
+  $('#hist-note').textContent = `${every} · gaps = engine off or account unavailable${dom.clipped ? ` · history starts ${fmtDay(new Date(dom.from).toISOString())}` : ''}`;
+  drawHistChart();
+}
+
+function tickLabel(t, step){
+  const d = new Date(t);
+  const weekdayDay = () => `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${d.getDate()}`;   // "Mon 19"
+  if (step < DAY_MS) return d.getHours() === 0 ? weekdayDay() : d.toLocaleTimeString('en-US', { hour: 'numeric' });
+  if (step <= 2 * DAY_MS) return weekdayDay();
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// The chart's time domain: the range, but starting where the log starts when
+// the range reaches further back than the history does (a fresh install).
+function histDomain(s){
+  const until = Date.now(), want = until - RANGES[s.range].ms;
+  const first = s.records?.length ? Date.parse(s.records[0].ts) : want;
+  const from = first - want > RANGES[s.range].ms * 0.1 ? first : want;
+  return { from, until, clipped: from !== want };
+}
+
+function drawHistChart(){
+  const s = histState;
+  const recs = s.records || [];
+  if (!recs.length) { histChart.innerHTML = '<div class="hist-empty">No history for this account in this range yet. The engine logs every account every few minutes.</div>'; return; }
+  const W = Math.max(280, histChart.clientWidth || 800), H = histChart.clientHeight || 290;
+  const m = { l: 40, r: 10, t: 8, b: 24 };
+  const range = RANGES[s.range];
+  const { from, until } = histDomain(s);
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const x = (t) => m.l + ((t - from) / (until - from)) * pw;
+  const y = (v) => m.t + (1 - v / 100) * ph;
+  const f = (n) => n.toFixed(1);
+  const { series } = seriesFor(recs);
+  const th = latest?.thresholds || { warnPct: 70, critPct: 90 };
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(s.label)}: ${series.map((sr) => sr.label).join(', ')} usage over ${esc(range.label)}">`;
+  svg += '<g class="grid">' + [0, 50, 100].map((v) => `<line x1="${m.l}" x2="${W - m.r}" y1="${f(y(v))}" y2="${f(y(v))}"/>`).join('') + '</g>';
+  svg += '<g class="thr">' + [th.warnPct, th.critPct].map((v) => `<line x1="${m.l}" x2="${W - m.r}" y1="${f(y(v))}" y2="${f(y(v))}"/><text x="${m.l - 8}" y="${f(y(v) + 3.5)}" text-anchor="end">${v}</text>`).join('') + '</g>';
+  const { step, ticks } = timeTicks(from, until, W < 560 ? 4 : 7);
+  svg += '<g class="axis">' + [0, 50, 100].map((v) => `<text x="${m.l - 8}" y="${f(y(v) + 3.5)}" text-anchor="end">${v}%</text>`).join('')
+    + ticks.map((t) => `<text x="${f(x(t))}" y="${H - 6}" text-anchor="middle">${esc(tickLabel(t, step))}</text>`).join('') + '</g>';
+  for (const key of DRAW_ORDER) {
+    const sr = series.find((z) => z.key === key);
+    if (!sr) continue;
+    const d = segments(recs, sr.value, range.gapMs).map((run) => run.length === 1
+      ? `M${f(x(run[0][0]))},${f(y(run[0][1]))}h0.1`
+      : 'M' + run.map(([t, v]) => `${f(x(t))},${f(y(v))}`).join('L')).join('');
+    if (d) svg += `<path class="ln" d="${d}" stroke="${SERIES_COLOR[key]}"${sr.dashed ? ' stroke-dasharray="5 4"' : ''}/>`;
+  }
+  svg += `<g class="hover" style="display:none"><line class="cross" y1="${m.t}" y2="${H - m.b}"/>`
+    + series.map((sr) => `<circle class="dot" r="4" data-k="${sr.key}" fill="${SERIES_COLOR[sr.key]}"/>`).join('') + '</g>';
+  svg += `<rect x="${m.l}" y="0" width="${pw}" height="${H}" fill="transparent"/></svg><div class="hist-tip" style="display:none"></div>`;
+  histChart.innerHTML = svg;
+
+  const svgEl = histChart.querySelector('svg'), hov = svgEl.querySelector('.hover'), tip = histChart.querySelector('.hist-tip');
+  const hide = () => { hov.style.display = 'none'; tip.style.display = 'none'; };
+  svgEl.addEventListener('pointerleave', hide);
+  svgEl.addEventListener('pointermove', (e) => {
+    const box = svgEl.getBoundingClientRect();
+    const px = (e.clientX - box.left) * (W / box.width);
+    const t = from + ((px - m.l) / pw) * (until - from);
+    const r = nearest(recs, t);
+    const rt = r ? Date.parse(r.ts) : NaN;
+    if (!r || Math.abs(rt - t) > range.gapMs) return hide();   // pointer is over a gap
+    const cx = x(rt);
+    hov.style.display = '';
+    const cross = hov.querySelector('.cross');
+    cross.setAttribute('x1', f(cx)); cross.setAttribute('x2', f(cx));
+    for (const sr of series) {
+      const c = hov.querySelector(`[data-k="${sr.key}"]`), v = sr.value(r);
+      c.style.display = v == null ? 'none' : '';
+      if (v != null) { c.setAttribute('cx', f(cx)); c.setAttribute('cy', f(y(Math.max(0, Math.min(100, v))))); }
+    }
+    const flags = [r.stale ? 'cached' : '', r.error ? r.error.replace(/_/g, ' ') : ''].filter(Boolean).join(' · ');
+    tip.innerHTML = `<div class="tt">${esc(fmtDay(r.ts))} ${esc(fmtClock(r.ts))}${flags ? ` · ${esc(flags)}` : ''}</div>`
+      + series.map((sr) => { const v = sr.value(r); return `<div class="tr">${lineSwatch(sr.key, sr.dashed)}<span>${esc(sr.label)}</span><b>${v == null ? '&mdash;' : Math.round(v) + '%'}</b></div>`; }).join('');
+    tip.style.display = '';
+    const cpx = cx * (box.width / W), tw = tip.offsetWidth;
+    tip.style.left = `${cpx + 14 + tw > box.width ? cpx - 14 - tw : cpx + 14}px`;
+  });
+}
+
+// Demo history (?demo): a plausible week-shaped trace per fake account so the
+// view can be previewed without an engine. Deterministic per account id.
+function demoHistory(id, range){
+  const r = RANGES[range];
+  const stepMs = r.step === '30m' ? 30 * MINUTE : r.step === '2h' ? 2 * HOUR_MS : 5 * MINUTE;
+  let seed = [...String(id)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+  const phase = rnd() * 7 * DAY_MS, rate = 0.55 + rnd() * 0.6, burst = 0.5 + rnd() * 0.6;
+  const now = Date.now(), gapAt = now - 2 * DAY_MS;
+  const records = [];
+  for (let t = now - r.ms; t <= now; t += stepMs) {
+    if (t > gapAt - 3 * HOUR_MS && t < gapAt) continue;   // an engine restart
+    const hour = new Date(t).getHours(), busy = hour >= 8 && hour < 21;
+    const weekly = Math.min(100, Math.round((((t + phase) % (7 * DAY_MS)) / (7 * DAY_MS)) * 100 * rate * 1.25));
+    const session = busy ? Math.min(100, Math.round(((t % (5 * HOUR_MS)) / (5 * HOUR_MS)) * 100 * burst * 1.3)) : 0;
+    records.push({ ts: new Date(t).toISOString(), account: id, session: { pct: session }, weekly: { pct: weekly }, models: [{ name: 'Fable', pct: Math.round(weekly * 0.35) }], stale: false, error: null });
+  }
+  const ws = records.map((x) => x.weekly.pct), ss = records.map((x) => x.session.pct);
+  const resets = ws.filter((v, i) => i && v < ws[i - 1] - 20).length;
+  const atLimit = records.filter((x) => Math.max(x.session.pct, x.weekly.pct) >= 90).length * (stepMs / 300000);
+  const summary = { weekly: { avg: ws.reduce((a, b) => a + b, 0) / ws.length, max: Math.max(...ws) }, session: { max: Math.max(...ss) }, resets: { weekly: resets }, atLimitSamples: atLimit, overage: null };
+  return { records, summary };
+}
+
 setInterval(load, 30000);
 setInterval(tick, 1000);
 </script>

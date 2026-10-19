@@ -45,6 +45,7 @@ The app and widget are the same Status Board rendered natively in SwiftUI; they 
 - A top summary — how many accounts need attention and the single most‑pressing fact. The board lists the most available account first and the most constrained last
 - **Sortable columns** (web and macOS app) — click a header to sort by account, plan, session, weekly, weekly reset (**Resets**, next to Weekly), model weekly or overage. Usage columns sort lowest first (most room on top), plan and overage largest first, weekly reset soonest first; click again to reverse, a third time to return to the headroom order. Accounts with no data for that column stay at the bottom. The choice is remembered
 - A **fleet bar** (web, macOS app and widget since v1.3.0) — every account folded into one capacity‑weighted number (see below), split into what is free now, what comes back within the next 5 hours, and what stays locked until a weekly reset, plus a schedule of the next resets and a weekly burn‑rate check
+- **Usage over time** (web and macOS app) — click an account to open a chart of its weekly, session and per‑model weekly usage for the last 24 hours, 7, 30 or 90 days, drawn from the engine's history log. Hover for exact values at any time; gaps mean the engine was off or the account was unavailable. Tiles above the chart give the weekly average and peak, session peak, time at the limit, weekly resets and overage spent in that range
 - **Compact mode** — one line per account so many accounts fit without scrolling. Auto‑enabled when the normal rows would overflow the window; pin it either way with the **Compact** button (⌘⇧K in the app). `?demo=many` previews it with 12 fake accounts.
 
 ## The fleet bar (how "total usage" is computed)
@@ -103,7 +104,7 @@ Read it back from the running engine:
 | Call | What you get |
 |---|---|
 | `GET /api/history?since=7d` | Raw records, oldest first. Filters: `account=<id or label substring>`, `since`/`until` (`24h`, `7d`, ISO time), `step=1h` (one sample per account per hour), `limit=N` (most recent N, default 5000, `0` for all), `format=json\|jsonl\|csv` |
-| `GET /api/history/summary?since=7d` | Per account: samples, first/last, session and weekly `latest/min/max/avg`, weekly reset count, per-model stats, overage delta in the window, samples at limit / warning / stale / errored |
+| `GET /api/history/summary?since=7d` | Per account: samples, first/last, session and weekly `latest/min/max/avg`, weekly reset count, per-model stats, overage delta and `spentUsd` (spend added, ignoring billing-cycle resets) in the window, samples at limit / warning / stale / errored |
 | `bin/claude-usage history --since 7d` | The summary as a terminal table with sparklines (`--account x`, `--json`, `--raw --step 1h` for JSONL) |
 
 Or read the files directly, for example `jq 'select(.label=="info team") | [.ts,.weekly.pct]' history/usage-2026-09-08.jsonl`. Weekly percentages drop to zero at each reset, so read a weekly trend alongside the reset count.

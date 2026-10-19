@@ -6,6 +6,7 @@ struct AccountCard: View {
     let now: Date
     var onRelogin: () -> Void
     var onRemove: () -> Void
+    var onOpen: () -> Void = {}
 
     private var hasExtras: Bool {
         !(a.usage?.weeklyModels?.isEmpty ?? true) || (a.usage?.overage?.enabled == true)
@@ -43,6 +44,8 @@ struct AccountCard: View {
         }
         .padding(16)
         .background(cardBg)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onTapGesture(perform: onOpen)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(borderColor, lineWidth: 1))
     }

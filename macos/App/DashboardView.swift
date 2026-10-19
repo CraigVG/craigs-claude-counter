@@ -94,6 +94,8 @@ struct DashboardView: View {
                 AddAccountSheet(model: model, replaceId: id, replaceLabel: label)
             case .remove(let a):
                 RemoveSheet(model: model, account: a)
+            case .history(let a):
+                HistorySheet(model: model, account: a)
             }
         }
     }
@@ -132,7 +134,8 @@ struct DashboardView: View {
             ForEach(accounts) { a in
                 AccountCard(a: a, now: model.tick,
                             onRelogin: { model.openReLogin(a) },
-                            onRemove: { model.openRemove(a) })
+                            onRemove: { model.openRemove(a) },
+                            onOpen: { model.openHistory(a) })
             }
         }
     }
@@ -159,7 +162,8 @@ struct DashboardView: View {
             ForEach(Array(accounts.enumerated()), id: \.element.id) { _, a in
                 AccountRowView(a: a, now: model.tick, layout: layout,
                                onRelogin: { model.openReLogin(a) },
-                               onRemove: { model.openRemove(a) })
+                               onRemove: { model.openRemove(a) },
+                               onOpen: { model.openHistory(a) })
                 Divider().background(Theme.hairSoft)
             }
         }
@@ -261,6 +265,7 @@ struct AccountRowView: View {
     var layout = BoardLayout(compact: false)
     var onRelogin: () -> Void
     var onRemove: () -> Void
+    var onOpen: () -> Void = {}
     @State private var hover = false
 
     private var rowSeverity: Severity {
@@ -282,7 +287,10 @@ struct AccountRowView: View {
         }
         .padding(.horizontal, 16).padding(.vertical, layout.rowVPad)
         .background(rowBackground)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpen)
         .onHover { hover = $0 }
+        .help("Click to see \(a.name)'s usage over time")
     }
 
     private var tickColor: Color {

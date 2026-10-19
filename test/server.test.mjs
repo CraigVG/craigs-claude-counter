@@ -264,10 +264,10 @@ test('GET / serves the dashboard html', async () => {
   } finally { await close(); }
 });
 
-test('GET /fleet.mjs and /board.mjs serve the shared browser modules', async () => {
+test('GET /fleet.mjs, /board.mjs and /usage-chart.mjs serve the shared browser modules', async () => {
   const { base, close } = await boot({ credstore: memStore(), usage: {}, oauth: {} });
   try {
-    for (const [path, name] of [['/fleet.mjs', 'computeFleet'], ['/board.mjs', 'sortAccounts']]) {
+    for (const [path, name] of [['/fleet.mjs', 'computeFleet'], ['/board.mjs', 'sortAccounts'], ['/usage-chart.mjs', 'segments']]) {
       const r = await fetch(base + path);
       assert.equal(r.status, 200);
       assert.match(r.headers.get('content-type'), /javascript/);
