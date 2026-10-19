@@ -80,7 +80,9 @@ All optional (sensible defaults; nothing required):
 |---|---|---|
 | `CLAUDE_USAGE_PORT` | `4319` | Port to listen on |
 | `CLAUDE_USAGE_BIND` | auto (Tailscale IP, else `127.0.0.1`) | Bind host |
-| `CLAUDE_USAGE_CACHE_MS` | `60000` | Min interval between upstream fetches per account |
+| `CLAUDE_USAGE_CACHE_MS` | `180000` | Min interval between upstream fetches per account (each value lives a random 75–125% of it). The usage endpoint's rate limit covers every account on a machine and is shared with the Claude Code CLI, so keep this well above a minute |
+| `CLAUDE_USAGE_CONCURRENCY` | `3` | Most upstream usage calls in flight at once |
+| `CLAUDE_USAGE_COOLDOWN_MS` | `120000` | Wait after a 429 before calling that account again; doubles on each further 429, up to 15 min |
 | `CLAUDE_USAGE_WARN` / `_CRIT` | `70` / `90` | Severity thresholds (%) |
 | `CLAUDE_USAGE_HISTORY_MS` | `300000` (5 min) | How often the engine logs every account's limits to the history (`0` disables) |
 | `CLAUDE_USAGE_HISTORY_DIR` | `<repo>/history` | Where the history JSONL files live |

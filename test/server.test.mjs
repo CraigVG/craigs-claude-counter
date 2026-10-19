@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, ensureFresh, startBackgroundRefresh, loginInfo, DEFAULT_LOGIN_LIFE_MS } from '../src/server.mjs';
+import { createServer, ensureFresh, startBackgroundRefresh, loginInfo, DEFAULT_LOGIN_LIFE_MS, makeGate } from '../src/server.mjs';
 import { OAUTH } from '../src/config.mjs';
 
 function memStore(seed = []) {
@@ -186,6 +186,63 @@ test('circuit breaker stops calling upstream during a 429 cooldown', async () =>
     assert.equal(body.accounts[0].stale, true);
     assert.match(body.accounts[0].message, /rate-limited/);
   } finally { await close(); }
+});
+
+test('repeated 429s back off longer each time, with jitter, and a success resets it', async () => {
+  let fail = true, calls = 0;
+  const credstore = memStore([{ id: 'a', label: 'a@x', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }]);
+  const usage = { fetchUsage: async () => { calls++; if (!fail) return goodUsage; const e = new Error('429'); e.status = 429; throw e; } };
+  const usageCache = new Map([['a', { usage: goodUsage, fetchedAt: 0 }]]);
+  const { base, close } = await bootCfg({ credstore, usage, oauth: {}, usageCache, random: () => 0.5 }, { cacheTtlMs: 0, rateLimitCooldownMs: 60_000 });
+  const expire = () => { const c = usageCache.get('a'); usageCache.set('a', { ...c, cooldownUntil: 0 }); };
+  const wait = () => usageCache.get('a').cooldownUntil - Date.now();
+  try {
+    await fetch(base + '/api/usage');
+    assert.equal(usageCache.get('a').strikes, 1);
+    assert.ok(Math.abs(wait() - 60_000) < 2000, 'first cooldown = base');
+    expire(); await fetch(base + '/api/usage');
+    assert.equal(usageCache.get('a').strikes, 2);
+    assert.ok(Math.abs(wait() - 120_000) < 2000, 'second cooldown doubles');
+    for (let i = 0; i < 6; i++) { expire(); await fetch(base + '/api/usage'); }
+    assert.ok(wait() <= 15 * 60_000 + 2000, 'capped at 15 min');
+    fail = false; expire(); await fetch(base + '/api/usage');
+    assert.equal(usageCache.get('a').strikes, undefined, 'a success clears the strikes');
+  } finally { await close(); }
+});
+
+test('fresh values live a jittered 75-125% of the cache TTL', async () => {
+  for (const [r, factor] of [[0, 0.75], [1, 1.25]]) {
+    const credstore = memStore([{ id: 'a', label: 'a@x', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }]);
+    const usageCache = new Map();
+    const { base, close } = await bootCfg({ credstore, usage: { fetchUsage: async () => goodUsage }, oauth: {}, usageCache, random: () => r }, { cacheTtlMs: 100_000 });
+    try {
+      await fetch(base + '/api/usage');
+      const c = usageCache.get('a');
+      assert.equal(c.expiresAt - c.fetchedAt, 100_000 * factor);
+    } finally { await close(); }
+  }
+});
+
+test('concurrent requests share one upstream call per account, and calls in flight are capped', async () => {
+  let calls = 0, active = 0, peak = 0;
+  const accts = Array.from({ length: 10 }, (_, i) => ({ id: `a${i}`, label: `a${i}@x`, accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }));
+  const usage = { fetchUsage: async () => { calls++; active++; peak = Math.max(peak, active); await new Promise((r) => setTimeout(r, 15)); active--; return goodUsage; } };
+  const { base, close } = await bootCfg({ credstore: memStore(accts), usage, oauth: {} }, { cacheTtlMs: 60_000, upstreamConcurrency: 3 });
+  try {
+    await Promise.all([fetch(base + '/api/usage'), fetch(base + '/api/usage'), fetch(base + '/api/usage')]);
+    assert.equal(calls, 10, 'one call per account despite three concurrent requests');
+    assert.ok(peak <= 3, `at most 3 in flight (saw ${peak})`);
+  } finally { await close(); }
+});
+
+test('makeGate runs queued work in order with a concurrency cap', async () => {
+  const gate = makeGate(2);
+  let active = 0, peak = 0;
+  const out = await Promise.all([1, 2, 3, 4, 5].map((n) => gate(async () => { active++; peak = Math.max(peak, active); await new Promise((r) => setTimeout(r, 5)); active--; return n; })));
+  assert.deepEqual(out, [1, 2, 3, 4, 5]);
+  assert.equal(peak, 2);
+  await assert.rejects(gate(async () => { throw new Error('boom'); }), /boom/);
+  assert.equal(await gate(async () => 'still works'), 'still works');
 });
 
 test('single-flight: concurrent refreshes share one upstream refresh call', async () => {

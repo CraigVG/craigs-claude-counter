@@ -107,11 +107,44 @@ export function startBackgroundRefresh({ credstore, oauth, usage, locks, interva
   return () => clearInterval(timer);
 }
 
+// Run at most `limit` upstream calls at once; the rest wait their turn. The
+// usage endpoint's rate limit covers every account from one machine (all 15
+// got a 429 in the same instant when fired together), so a restart or a
+// cold cache must not send one call per account in a single burst.
+export function makeGate(limit = 3) {
+  let active = 0;
+  const queue = [];
+  const next = () => {
+    if (active >= limit || !queue.length) return;
+    active++;
+    const { fn, resolve, reject } = queue.shift();
+    Promise.resolve().then(fn).then(resolve, reject).finally(() => { active--; next(); });
+  };
+  return (fn) => new Promise((resolve, reject) => { queue.push({ fn, resolve, reject }); next(); });
+}
+
+const MAX_COOLDOWN_MS = 15 * 60_000;
+
 // Build the aggregate payload for one account, isolating all failures.
 // Uses an in-memory cache so the upstream endpoint is hit at most once per
 // account per cacheTtl, and serves the last-known value (stale) on errors.
+// Each fresh value lives a random 75-125% of cacheTtl, so accounts drift
+// apart instead of all expiring (and refetching) in the same second.
+// Concurrent callers for one account share a single upstream call (inflight),
+// and `gate` caps upstream calls in flight across accounts.
 async function accountUsage(account, deps) {
-  const { oauth, credstore, usage, thresholds, cache, locks, cacheTtl = 60_000, cooldownMs = 120_000, now = Date.now() } = deps;
+  const { inflight } = deps;
+  if (!inflight) return accountUsageOnce(account, deps);
+  const pending = inflight.get(account.id);
+  if (pending) return pending;
+  const p = accountUsageOnce(account, deps);
+  inflight.set(account.id, p);
+  try { return await p; } finally { inflight.delete(account.id); }
+}
+
+async function accountUsageOnce(account, deps) {
+  const { oauth, credstore, usage, thresholds, cache, locks, cacheTtl = 180_000, cooldownMs = 120_000, now = Date.now(), gate = (fn) => fn(), random = Math.random } = deps;
+  const jitter = () => 0.75 + 0.5 * random();
   const base = { id: account.id, label: account.label, tier: account.tier || null, login: loginInfo(account) };
   const cached = cache && cache.get(account.id);
   // Permanent auth failure: surface it (with dimmed last-known data) instead of
@@ -131,12 +164,25 @@ async function accountUsage(account, deps) {
   }
 
   // Serve a fresh cache hit without touching upstream.
-  if (cached && cached.usage && now - cached.fetchedAt < cacheTtl) {
+  if (cached && cached.usage && now < (cached.expiresAt ?? cached.fetchedAt + cacheTtl)) {
     return { ...base, usage: cached.usage, cachedAgeMs: now - cached.fetchedAt };
   }
 
-  const storeOk = (u) => { if (cache) cache.set(account.id, { usage: u, fetchedAt: Date.now() }); return u; };
-  const tripCooldown = () => { if (cache) cache.set(account.id, { ...(cache.get(account.id) || {}), cooldownUntil: Date.now() + cooldownMs }); };
+  const storeOk = (u) => {
+    const t = Date.now();
+    if (cache) cache.set(account.id, { usage: u, fetchedAt: t, expiresAt: t + Math.round(cacheTtl * jitter()) });
+    return u;
+  };
+  // Back off harder on repeated 429s (cooldown, 2x, 4x ... up to 15 min), with
+  // jitter so accounts that failed together do not all retry together.
+  const tripCooldown = () => {
+    if (!cache) return;
+    const prev = cache.get(account.id) || {};
+    const strikes = (prev.strikes || 0) + 1;
+    const wait = Math.min(MAX_COOLDOWN_MS, cooldownMs * 2 ** (strikes - 1)) * jitter();
+    cache.set(account.id, { ...prev, strikes, cooldownUntil: Date.now() + Math.round(wait) });
+  };
+  const fetchUsage = (token) => gate(() => usage.fetchUsage(token, { thresholds }));
 
   try {
     let acct;
@@ -149,14 +195,14 @@ async function accountUsage(account, deps) {
         || { ...base, error: 'fetch_failed', status: e.status || null, message: String(e.message || e) };
     }
     try {
-      const u = storeOk(await usage.fetchUsage(acct.accessToken, { thresholds }));
+      const u = storeOk(await fetchUsage(acct.accessToken));
       return { ...base, usage: u };
     } catch (e) {
       // One retry after a forced refresh on 401.
       if (e.status === 401 && acct.refreshToken) {
         try {
           const updated = await refreshAccount(acct, { oauth, credstore, locks });
-          const u = storeOk(await usage.fetchUsage(updated.accessToken, { thresholds }));
+          const u = storeOk(await fetchUsage(updated.accessToken));
           return { ...base, usage: u };
         } catch (e2) {
           if (e2.needsRelogin) return needsRelogin();
@@ -165,7 +211,12 @@ async function accountUsage(account, deps) {
         }
       }
       // 429 / 5xx / network: prefer last-known value over an error.
-      if (e.status === 429) tripCooldown();
+      if (e.status === 429) {
+        tripCooldown();
+        const ri = e.rateInfo || {};
+        const c = cache && cache.get(account.id);
+        console.log(`[usage] 429 for ${account.label || account.id} (strike ${c?.strikes ?? 1}, cooling ${c?.cooldownUntil ? Math.round((c.cooldownUntil - Date.now()) / 1000) : '?'}s; retry-after ${ri.retryAfterMs == null ? 'none' : Math.round(ri.retryAfterMs / 1000) + 's'})`);
+      }
       return serveStale({ status: e.status || null, message: `cached; upstream ${e.status || 'error'}` })
         || { ...base, error: e.status === 429 ? 'rate_limited' : 'fetch_failed', status: e.status || null, message: String(e.message || e) };
     }
@@ -207,6 +258,9 @@ export function createServer(deps = {}) {
   const logins = deps.logins || new Map(); // loginId -> {verifier, state, label}
   const usageCache = deps.usageCache || new Map(); // accountId -> {usage, fetchedAt}
   const refreshLocks = deps.refreshLocks || new Map(); // accountId -> in-flight refresh promise
+  const inflight = deps.inflight || new Map(); // accountId -> in-flight usage fetch (shared by concurrent callers)
+  const gate = deps.gate || makeGate(config.upstreamConcurrency ?? 3); // caps upstream usage calls in flight
+  const random = deps.random || Math.random;
   const thresholds = { warnPct: config.warnPct, critPct: config.critPct };
   // Usage history store (null when no dir is configured, e.g. in tests).
   const history = deps.history !== undefined ? deps.history
@@ -240,7 +294,7 @@ export function createServer(deps = {}) {
     await seeded;
     const accounts = await credstore.listAccounts();
     const results = await Promise.all(
-      accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
+      accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, inflight, gate, random, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
     );
     // `fleet` folds every account into one capacity-weighted picture (see src/fleet.mjs).
     return { generatedAt: new Date().toISOString(), thresholds, accounts: results, fleet: computeFleet(results, thresholds) };

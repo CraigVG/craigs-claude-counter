@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeUsage, bankedResetsFrom, severityFor, prettyTier, fetchUsage, fetchProfile } from '../src/usage.mjs';
+import { normalizeUsage, bankedResetsFrom, severityFor, prettyTier, fetchUsage, fetchProfile, rateInfoFrom } from '../src/usage.mjs';
 import { USAGE_RESETS_URL } from '../src/config.mjs';
 
 // Real captured response from GET /api/oauth/usage (2026-06-18).
@@ -188,4 +188,16 @@ test('fetchUsage asks for banked resets as the Claude Code CLI', async () => {
   assert.match(seen.url, /[?&]cedar_ember=1\b/);
   assert.match(seen.ua, /^claude-cli\//);
   assert.equal(u.bankedResets.total, 1);
+});
+
+test('rateInfoFrom reads Retry-After (seconds or date), rate-limit headers and the body start', async () => {
+  const res = (headers, body) => new Response(body, { status: 429, headers });
+  const a = await rateInfoFrom(res({ 'retry-after': '30', 'anthropic-ratelimit-requests-remaining': '0', 'content-type': 'application/json' }, '{"error":{"type":"rate_limit_error"}}'));
+  assert.equal(a.retryAfterMs, 30_000);
+  assert.deepEqual(a.headers, { 'anthropic-ratelimit-requests-remaining': '0', 'retry-after': '30' });
+  assert.match(a.body, /rate_limit_error/);
+  const now = Date.parse('2026-10-19T20:00:00Z');
+  const b = await rateInfoFrom(res({ 'retry-after': 'Mon, 19 Oct 2026 20:01:00 GMT' }, ''), now);
+  assert.equal(b.retryAfterMs, 60_000);
+  assert.equal((await rateInfoFrom(res({}, 'x'))).retryAfterMs, null);
 });

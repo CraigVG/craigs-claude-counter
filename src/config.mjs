@@ -87,12 +87,19 @@ export function loadConfig(env = process.env) {
     bindHost,
     pollIntervalMs: Number(env.CLAUDE_USAGE_POLL_MS || 30_000),
     // Server-side cache: upstream usage endpoint is hit at most once per
-    // account per this window, regardless of how many browsers poll. Protects
-    // against the endpoint's own rate limit (429).
-    cacheTtlMs: Number(env.CLAUDE_USAGE_CACHE_MS || 60_000),
+    // account per this window (each value lives a random 75-125% of it),
+    // regardless of how many clients poll. The endpoint's rate limit covers
+    // every account from one machine and is shared with the Claude Code CLI,
+    // so this stays well above a minute (60 s drew 429s on a third to half of
+    // accounts in Oct 2026).
+    cacheTtlMs: Number(env.CLAUDE_USAGE_CACHE_MS || 180_000),
+    // Most upstream usage calls in flight at once (restarts and cold caches
+    // otherwise fire one per account in a single burst).
+    upstreamConcurrency: Number(env.CLAUDE_USAGE_CONCURRENCY || 3),
     // Circuit breaker: after a 429 from upstream, stop calling it for this
-    // account for this long (serving last-known data). Prevents an open tab
-    // from sustaining the rate limit with a flood of failed retries.
+    // account for this long (serving last-known data), doubling on each
+    // further 429 up to 15 min, with jitter. Prevents an open tab from
+    // sustaining the rate limit with a flood of failed retries.
     rateLimitCooldownMs: Number(env.CLAUDE_USAGE_COOLDOWN_MS || 120_000),
     // Background token keep-alive: the always-on server proactively refreshes any
     // access token expiring within `bgRefreshWithinMs`, every `bgRefreshIntervalMs`,

@@ -175,6 +175,28 @@ export function normalizeUsage(raw, thresholds = { warnPct: 70, critPct: 90 }) {
   return { session, weekly, weeklyModels, weeklyOpus, weeklySonnet, overage, bankedResets: bankedResetsFrom(raw) };
 }
 
+// What a non-OK response says about rate limiting: Retry-After (seconds or an
+// HTTP date, as ms to wait), any rate-limit headers, and the start of the
+// error body. Holds no credentials; safe to log.
+export async function rateInfoFrom(res, now = Date.now()) {
+  const h = res.headers;
+  const get = (k) => (h && typeof h.get === 'function' ? h.get(k) : null);
+  const ra = get('retry-after');
+  let retryAfterMs = null;
+  if (ra != null && ra !== '') {
+    const secs = Number(ra);
+    if (Number.isFinite(secs)) retryAfterMs = Math.max(0, secs * 1000);
+    else if (!Number.isNaN(Date.parse(ra))) retryAfterMs = Math.max(0, Date.parse(ra) - now);
+  }
+  const headers = {};
+  if (h && typeof h.forEach === 'function') {
+    h.forEach((v, k) => { if (/ratelimit|retry-after/i.test(k)) headers[k] = v; });
+  }
+  let body = null;
+  try { body = (await res.text()).slice(0, 200); } catch { /* no body */ }
+  return { retryAfterMs, headers, body };
+}
+
 // Fetch live usage for one access token. `fetchImpl` is injectable for tests.
 export async function fetchUsage(accessToken, { fetchImpl = fetch, thresholds } = {}) {
   const res = await fetchImpl(USAGE_RESETS_URL, {
@@ -188,6 +210,7 @@ export async function fetchUsage(accessToken, { fetchImpl = fetch, thresholds } 
   if (!res.ok) {
     const err = new Error(`usage endpoint returned ${res.status}`);
     err.status = res.status;
+    err.rateInfo = await rateInfoFrom(res);
     throw err;
   }
   const raw = await res.json();
