@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHistory, recordFrom, parseTime, parseStep, summarize, toCsv, startUsagePoller, fleetHistory } from '../src/history.mjs';
+import { createHistory, recordFrom, parseTime, parseStep, summarize, toCsv, startUsagePoller, fleetHistory, weeklyResets } from '../src/history.mjs';
 
 const H = 3_600_000, D = 24 * H;
 const iso = (ms) => new Date(ms).toISOString();
@@ -173,6 +173,31 @@ test('fleetHistory rebuilds the fleet bar at every poll and summarizes all polls
   assert.equal(thin.points.length, 1);
   assert.equal(thin.summary.polls, 3);
   assert.deepEqual(fleetHistory([]).points, []);
+});
+
+test('weeklyResets finds each weekly rollover and the unused share of the week that ended', () => {
+  const t0 = Date.parse('2026-10-17T12:00:00Z');
+  const mk = (min, id, tier, weekly, resetsAt) => recordFrom({ id, label: id, tier, usage: { session: { pct: 0 }, weekly: { pct: weekly, resetsAt } } }, iso(t0 + min * 60_000));
+  const recs = [
+    mk(0, 'a', 'Max 20x', 60, '2026-10-17T12:59:59.832Z'),
+    mk(5, 'b', 'Pro', 100, '2026-10-17T12:10:00Z'),
+    mk(30, 'a', 'Max 20x', 60, '2026-10-17T13:00:00.451Z'), // jitter, not a reset
+    mk(35, 'b', 'Pro', 0, '2026-10-24T12:10:00Z'), // b reset fully used
+    mk(65, 'a', 'Max 20x', 0, '2026-10-24T13:00:00Z'), // a reset with 40% unused
+    mk(70, 'a', 'Max 20x', 5, '2026-10-24T13:00:00Z'),
+  ];
+  const ev = weeklyResets(recs);
+  assert.deepEqual(ev.map((e) => [e.account, e.usedPct, e.unusedPct, e.units]), [['b', 100, 0, 0], ['a', 60, 40, 2.8]]);
+  assert.equal(ev[1].at, '2026-10-17T13:00:00.451Z');
+  assert.equal(ev[1].approx, false);
+  // A banked refill: usage drops, resetsAt stays.
+  assert.deepEqual(weeklyResets([mk(0, 'c', 'Pro', 90, '2026-10-20T00:00:00Z'), mk(5, 'c', 'Pro', 0, '2026-10-20T00:00:00Z')]), []);
+  // fleetHistory totals them as a share of the capacity that reset.
+  const fh = fleetHistory(recs);
+  assert.equal(fh.summary.resets, 2);
+  assert.equal(fh.summary.expiredUnusedUnits, 2.8);
+  assert.equal(fh.summary.expiredUnusedPct, 35);   // 2.8 of (7 + 1) units
+  assert.ok(fh.resets.every((e) => e.fleetPct != null));
 });
 
 test('summarize counts overage spent across a billing-cycle reset', () => {

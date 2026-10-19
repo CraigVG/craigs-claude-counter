@@ -97,7 +97,7 @@ struct DashboardView: View {
             case .history(let a):
                 HistorySheet(model: model, account: a)
             case .fleetHistory:
-                FleetHistorySheet(model: model, accountCount: model.snapshot?.accounts.count ?? 0)
+                FleetHistorySheet(model: model, accounts: model.snapshot?.accounts ?? [])
             }
         }
     }

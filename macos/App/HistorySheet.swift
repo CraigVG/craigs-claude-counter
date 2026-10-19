@@ -248,12 +248,13 @@ private struct Legend: View {
 struct StatTiles: View {
     let tiles: [StatTile]
     var body: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
             ForEach(tiles, id: \.label) { t in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(t.label.uppercased()).font(Theme.mono(10, .regular)).tracking(1).foregroundColor(Theme.ink3)
                         .lineLimit(1).minimumScaleFactor(0.75)
                     Text(t.value).font(Theme.mono(17, .semibold)).foregroundColor(Theme.ink)
+                        .lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12).padding(.vertical, 9)

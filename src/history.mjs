@@ -9,7 +9,7 @@
 // ever written here — only labels, tiers and percentages.
 import { appendFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { computeFleet } from './fleet.mjs';
+import { computeFleet, tierWeight } from './fleet.mjs';
 
 const FILE_RE = /^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const DAY_MS = 86_400_000;
@@ -172,13 +172,44 @@ export function summarize(records, { warnPct = 70, critPct = 90 } = {}) {
   return out;
 }
 
+// Weekly resets seen in the log, with how much of each week went unused. A
+// reset shows as the weekly resetsAt moving forward by more than
+// RESET_JITTER_MS between two samples of one account; the sample before it
+// holds the final usage of the week that just ended, so unused = 100 - that.
+// A banked-reset refill drops usage without moving resetsAt, so it is not a
+// reset here. `approx` marks a reset whose last sample is more than an hour
+// from the reset time (engine off, or serving cached numbers). `units` is the
+// unused share in weekly-capacity units (Pro = 1, Max 20x = 7; see fleet.mjs).
+export function weeklyResets(records) {
+  const last = new Map();
+  const out = [];
+  for (const r of records || []) {
+    const w = r.weekly;
+    if (!w || w.pct == null) continue;
+    const t = Date.parse(r.ts), at = Date.parse(w.resetsAt || '');
+    if (Number.isNaN(t) || Number.isNaN(at)) continue;
+    const prev = last.get(r.account);
+    if (prev && at - prev.at > RESET_JITTER_MS) {
+      const used = Math.max(0, Math.min(100, prev.pct));
+      const { weight } = tierWeight(prev.tier || r.tier);
+      out.push({
+        account: r.account, label: prev.label, tier: prev.tier || r.tier || null, weight,
+        at: new Date(prev.at).toISOString(), usedPct: used, unusedPct: Math.round((100 - used) * 10) / 10,
+        units: Math.round(weight * (100 - used)) / 100, approx: Math.abs(prev.at - prev.t) > 3_600_000,
+      });
+    }
+    last.set(r.account, { t, at, pct: w.pct, label: r.label || r.account, tier: r.tier });
+  }
+  return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
 // The fleet picture at every logged poll. One poll writes every account with
 // the same ts, so records are grouped by ts, turned back into /api/usage
 // accounts, and run through the same computeFleet the live fleet bar uses,
 // with `now` set to that poll (so "back within 5h" and pace are as of then).
 // `stepMs` thins the returned points (first poll per bucket); the summary
 // always covers every poll. Records must be sorted by ts.
-export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs = 300_000, stepMs = null } = {}) {
+export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs = 300_000, stepMs = null, since = null } = {}) {
   const polls = [];
   let cur = null;
   for (const r of records || []) {
@@ -213,6 +244,24 @@ export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs =
     avgPaceRatio: paces.length ? Math.round((paces.reduce((a, b) => a + b, 0) / paces.length) * 100) / 100 : null,
     maxAccounts: all.length ? Math.max(...all.map((p) => p.total)) : 0,
   };
+  // Weekly capacity that expired unused. Each reset also gets its share of the
+  // fleet's weekly capacity at that moment (fleetPct), for the chart's bars.
+  const resets = weeklyResets(records).filter((e) => since == null || Date.parse(e.at) >= since);
+  const capAt = (iso) => {
+    const t = Date.parse(iso);
+    let best = null;
+    for (const p of all) { if (best == null || Math.abs(Date.parse(p.ts) - t) < Math.abs(Date.parse(best.ts) - t)) best = p; else if (Date.parse(p.ts) > t) break; }
+    return best?.capacity || null;
+  };
+  for (const e of resets) {
+    const cap = capAt(e.at);
+    e.fleetPct = cap ? Math.round(((100 * e.units) / cap) * 10) / 10 : null;
+  }
+  const resetUnits = resets.reduce((s, e) => s + e.weight, 0);
+  const unusedUnits = resets.reduce((s, e) => s + e.units, 0);
+  summary.resets = resets.length;
+  summary.expiredUnusedUnits = Math.round(unusedUnits * 100) / 100;
+  summary.expiredUnusedPct = resetUnits ? Math.round((1000 * unusedUnits) / resetUnits) / 10 : null;
   let points = all;
   if (stepMs) {
     let last = null;
@@ -223,7 +272,7 @@ export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs =
       return true;
     });
   }
-  return { points, summary };
+  return { points, summary, resets };
 }
 
 export function toCsv(records) {

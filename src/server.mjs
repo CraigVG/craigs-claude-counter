@@ -312,7 +312,7 @@ export function createServer(deps = {}) {
         if (q.error) return sendJson(res, 400, { error: q.error });
         const records = await history.query({ since: q.since, until: q.until, limit: 0 });
         const intervalMs = config.historyIntervalMs || 300_000;
-        const out = fleetHistory(records, { ...thresholds, intervalMs, stepMs: q.step });
+        const out = fleetHistory(records, { ...thresholds, intervalMs, stepMs: q.step, since: q.since });
         return sendJson(res, 200, {
           since: new Date(q.since).toISOString(), until: new Date(q.until).toISOString(),
           step: url.searchParams.get('step') || null, intervalMs, thresholds, ...out,

@@ -249,13 +249,27 @@
   .hist-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); }
   .hist-legend .k { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
   .hist-legend .omit { color: var(--ink-4); font-family: var(--mono); font-size: 11px; }
-  .hist-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(124px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .hist-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 8px; margin-bottom: 14px; }
   .hist-stats .st { background: var(--panel-2); border: 1px solid var(--hair-soft); border-radius: 8px; padding: 9px 12px; }
   .hist-stats .sl { font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
   .hist-stats .sv { font: 600 17px var(--mono); color: var(--ink); margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .hist-stats .sv small { font-size: 11px; color: var(--ink-3); font-weight: 500; margin-left: 1px; }
   .hist-chart { position: relative; height: 290px; touch-action: pan-y; }
-  .hist-chart.is-fleet { height: 400px; }
+  .hist-chart.is-fleet { height: 480px; }
+  .modal.hist { max-height: calc(100vh - 40px); overflow-y: auto; }
+  .hx-sec { margin-top: 16px; }
+  .hx-h { font: 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+  .hx-h span { text-transform: none; letter-spacing: 0; color: var(--ink-4); font-size: 11px; }
+  .hx-h span b { color: var(--ink-2); font-weight: 600; }
+  .hx-scroll { overflow-x: auto; }
+  .hx-t { width: 100%; border-collapse: collapse; font-size: 12.5px; color: var(--ink-2); }
+  .hx-t th { font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); text-align: left; font-weight: 400; padding: 4px 8px; border-bottom: 1px solid var(--hair); white-space: nowrap; }
+  .hx-t td { padding: 6px 8px; border-bottom: 1px solid var(--hair-soft); white-space: nowrap; }
+  .hx-t td.n, .hx-t th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .hx-t td.n b { color: var(--ink); font-weight: 600; }
+  .hx-t tr.tot td { color: var(--ink); border-bottom: none; border-top: 1px solid var(--hair); }
+  .hx-t .pill { font: 11px var(--mono); color: var(--ink-3); }
+  .hx-empty { color: var(--ink-4); font-size: 12.5px; padding: 4px 0; }
   .hist-chart .ptitle { fill: var(--ink-3); font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
   .hist-chart .sep { stroke: var(--panel); stroke-width: 1.5; fill: none; }
   .fleet-hist { all: unset; cursor: pointer; font: 11px var(--mono); color: var(--ink-3); border: 1px solid var(--hair); border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
@@ -278,7 +292,7 @@
   .hist-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink-3); font-size: 13px; text-align: center; padding: 0 20px; }
   .hist-foot { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; font: 11px var(--mono); color: var(--ink-4); }
   .hist-foot a { color: var(--ink-3); }
-  @media (max-width: 600px) { .hist-chart { height: 220px; } .hist-chart.is-fleet { height: 340px; } .modal.hist { padding: 14px 14px 12px; } }
+  @media (max-width: 600px) { .hist-chart { height: 220px; } .hist-chart.is-fleet { height: 420px; } .modal.hist { padding: 14px 14px 12px; } }
   button.primary { font-family: var(--ui); background: var(--accent); border: 1px solid var(--accent); color: #0c0f13; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
   button.primary:hover { filter: brightness(1.08); }
   button.ghost { font-family: var(--ui); background: transparent; border: 1px solid var(--hair); color: var(--ink-2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
@@ -434,12 +448,13 @@
       </div>
       <div class="hist-stats" id="hist-stats"></div>
       <div class="hist-chart" id="hist-chart"></div>
+      <div id="hist-extra"></div>
       <div class="hist-foot"><span id="hist-note"></span><span style="flex:1"></span><a id="hist-csv" href="#" target="_blank" rel="noopener">open as CSV</a></div>
     </div>
   </div>
 
 <script type="module">
-import { computeFleet } from '/fleet.mjs';
+import { computeFleet, tierWeight } from '/fleet.mjs';
 import { sortAccounts, nextSort, parseSort, SORT_COLUMNS, DEFAULT_SORT, reloginOffered } from '/board.mjs';
 import { RANGES, parseRange, historyQuery, seriesFor, segments, nearest, timeTicks, fleetQuery, fleetGapMs } from '/usage-chart.mjs';
 const $ = (s) => document.querySelector(s);
@@ -1009,7 +1024,7 @@ async function loadFleet(s, seq){
     const d = DEMO ? demoFleetHistory(s.range)
       : await fetch(`/api/history/fleet?${q}`, { cache: 'no-store' }).then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)));
     if (histState !== s || seq !== s.seq) return;
-    Object.assign(s, { records: d.points || [], summary: d.summary || null, intervalMs: d.intervalMs || 300000 });
+    Object.assign(s, { records: d.points || [], summary: d.summary || null, resets: d.resets || [], intervalMs: d.intervalMs || 300000 });
     renderFleetHistory();
   } catch (e) {
     if (histState === s && seq === s.seq) histChart.innerHTML = `<div class="hist-empty">Could not load fleet history (${esc(e.message)}). Is the engine running?</div>`;
@@ -1031,6 +1046,7 @@ function durText(ms){
 function renderHistory(){
   const s = histState;
   $('#hist-csv').textContent = 'open as CSV';
+  $('#hist-extra').innerHTML = '';
   const { series, omitted } = seriesFor(s.records);
   $('#hist-legend').innerHTML = series.map((sr) => `<span class="k">${lineSwatch(sr.key, sr.dashed)}${esc(sr.label)}</span>`).join('')
     + (omitted.length ? `<span class="omit">${esc(omitted.join(', '))} not drawn</span>` : '');
@@ -1146,6 +1162,7 @@ function renderFleetHistory(){
     `<span class="k">${areaSwatch(FLEET_COLOR.soon, 0.6)}Back within 5h</span>`,
     `<span class="k">${plainSwatch(FLEET_COLOR.blocked)}Accounts blocked</span>`,
     `<span class="k">${plainSwatch(FLEET_COLOR.pace)}Weekly burn vs pace</span>`,
+    `<span class="k">${hatchSwatch()}Expired unused at a weekly reset</span>`,
   ].join('');
   const pct = (v) => (v == null ? '&mdash;' : `${Math.round(v)}<small>%</small>`);
   const th = latest?.thresholds || { warnPct: 70, critPct: 90 };
@@ -1153,6 +1170,7 @@ function renderFleetHistory(){
     ['Avg used', pct(sm.avgUsedPct), 'Average plan-weighted fleet usage over the range (the fleet bar’s number)'],
     ['Peak used', pct(sm.maxUsedPct), 'Highest fleet usage in the range'],
     ['Lowest free', pct(sm.minFreePct), 'The least free capacity the fleet had at any poll'],
+    ['Expired unused', pct(sm.expiredUnusedPct), `Share of the weekly capacity that reset in the range without being used: ${sm.resets ?? 0} resets, about ${((sm.expiredUnusedUnits || 0) / 7).toFixed(1)} Max 20x weeks`],
     ['Any blocked', durText(sm.blockedMs || 0), 'Time with at least one account at 100% (session or weekly)'],
     ['Peak blocked', sm.peakBlocked == null ? '&mdash;' : `${sm.peakBlocked}<small> of ${sm.maxAccounts}</small>`, 'Most accounts blocked at the same time'],
     ['Avg burn', sm.avgPaceRatio == null ? '&mdash;' : `${sm.avgPaceRatio.toFixed(1)}<small>&times;</small>`, 'Weekly usage vs the share of each weekly window elapsed, plan-weighted; 1× is sustainable'],
@@ -1163,6 +1181,53 @@ function renderFleetHistory(){
   const dom = histDomain(s);
   $('#hist-note').textContent = `${step ? `one point per ${step}` : `a point every ${Math.round(s.intervalMs / MINUTE)} min`} · same math as the fleet bar: plan-weighted, an account counts its binding window${dom.clipped ? ` · history starts ${fmtDay(new Date(dom.from).toISOString())}` : ''}`;
   drawFleetChart();
+  renderFleetExtra();
+}
+
+const hatchSwatch = () => `<svg width="14" height="10" aria-hidden="true"><rect x="0.5" y="0.5" width="13" height="9" rx="2" fill="url(#hx-hatch-sw)" stroke="var(--ink-2)" stroke-width="1"/><defs><pattern id="hx-hatch-sw" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="var(--ink-2)" stroke-width="1.5"/></pattern></defs></svg>`;
+const max20x = (units) => { const v = units / 7; return v >= 1 || v === 0 ? v.toFixed(1) : v.toFixed(2); };
+
+// Accounts whose weekly window resets within 48 h with capacity left: what
+// will expire unused unless work moves there. From the live board numbers.
+function expiringSoon(){
+  const now = Date.now(), accts = latest?.accounts || [];
+  const W = fleetFor(accts).weightTotal || 0;
+  return accts.map((a) => {
+    const w = a.usage?.weekly, at = Date.parse(w?.resetsAt || '');
+    if (!w || w.pct == null || Number.isNaN(at)) return null;
+    const left = Math.max(0, 100 - w.pct), wt = tierWeight(a.tier).weight;
+    return { label: a.label || a.id, tier: a.tier, at, left, units: (wt * left) / 100, fleetPct: W ? (wt * left) / W : null };
+  }).filter((e) => e && e.left > 0 && e.at > now && e.at - now <= 48 * HOUR_MS).sort((a, b) => a.at - b.at);
+}
+
+function renderFleetExtra(){
+  const s = histState;
+  const soon = expiringSoon();
+  const soonPct = soon.reduce((t, e) => t + (e.fleetPct || 0), 0);
+  const soonRows = soon.map((e) => `<tr><td>${esc(e.label)}</td><td><span class="pill">${esc(e.tier || '')}</span></td><td class="n"><b>${Math.round(e.left)}%</b> left</td><td class="n">${e.fleetPct == null ? '' : `${e.fleetPct.toFixed(1)}% of fleet`}</td><td>resets <span data-in="${esc(new Date(e.at).toISOString())}">${esc(inText(new Date(e.at).toISOString()))}</span> &middot; ${esc(fmtDay(new Date(e.at).toISOString()))} ${esc(fmtClock(new Date(e.at).toISOString()))}</td></tr>`).join('');
+  const byAcct = new Map();
+  // Grouped by name: a re-added account gets a new id but is the same seat.
+  for (const e of s.resets || []) {
+    const key = e.label || e.account;
+    const g = byAcct.get(key) || { label: key, tier: e.tier, n: 0, unused: 0, units: 0, approx: 0 };
+    g.n++; g.unused += e.unusedPct; g.units += e.units; if (e.approx) g.approx++;
+    byAcct.set(key, g);
+  }
+  const all = [...byAcct.values()].sort((a, b) => b.units - a.units || a.label.localeCompare(b.label));
+  const groups = all.filter((g) => g.units > 0);
+  const full = all.filter((g) => g.units <= 0).map((g) => g.label);
+  const sm = s.summary || {};
+  const expRows = groups.map((g) => `<tr><td>${esc(g.label)}${g.approx ? ' <span class="pill" title="The last reading before at least one of these resets was over an hour old (engine off or cached), so its unused share is approximate">~</span>' : ''}</td><td><span class="pill">${esc(g.tier || '')}</span></td><td class="n">${g.n}</td><td class="n"><b>${Math.round(g.unused / g.n)}%</b></td><td class="n">${max20x(g.units)}</td></tr>`).join('');
+  $('#hist-extra').innerHTML = `
+    <div class="hx-sec">
+      <div class="hx-h">Use it or lose it &middot; next 48 h ${soon.length ? `<span><b>${soonPct.toFixed(1)}%</b> of the fleet's weekly capacity resets unused unless work moves to these accounts</span>` : ''}</div>
+      ${soon.length ? `<div class="hx-scroll"><table class="hx-t"><tbody>${soonRows}</tbody></table></div>` : '<div class="hx-empty">No account resets in the next 48 hours with capacity left.</div>'}
+    </div>
+    <div class="hx-sec">
+      <div class="hx-h">Expired unused in this range ${sm.resets ? `<span>${sm.resets} weekly resets &middot; <b>${Math.round(sm.expiredUnusedPct ?? 0)}%</b> of the capacity that reset went unused &middot; about <b>${max20x(sm.expiredUnusedUnits || 0)}</b> Max 20x weeks</span>` : ''}</div>
+      ${groups.length ? `<div class="hx-scroll"><table class="hx-t"><thead><tr><th>Account</th><th>Plan</th><th class="n">Resets</th><th class="n">Avg unused</th><th class="n">Max 20x weeks</th></tr></thead><tbody>${expRows}</tbody></table></div>` : (all.length ? '<div class="hx-empty">Every account used its whole week at every reset in this range.</div>' : '<div class="hx-empty">No weekly resets in this range yet.</div>')}
+      ${groups.length && full.length ? `<div class="hx-empty">Used the whole week at every reset: ${esc(full.join(', '))}</div>` : ''}
+    </div>`;
 }
 
 function drawFleetChart(){
@@ -1170,10 +1235,11 @@ function drawFleetChart(){
   if (!pts.some((p) => p.usedPct != null)) { histChart.innerHTML = '<div class="hist-empty">No fleet history in this range yet. The engine logs every account every few minutes.</div>'; return; }
   const W = Math.max(280, histChart.clientWidth || 800), H = histChart.clientHeight || 400;
   const m = { l: 44, r: 10, t: 8, b: 24 }, gapY = 22;
-  const avail = H - m.t - m.b - 2 * gapY;
-  const A = { top: m.t, h: Math.round(avail * 0.58) };
-  const B = { top: A.top + A.h + gapY, h: Math.round(avail * 0.2) };
-  const C = { top: B.top + B.h + gapY, h: avail - A.h - B.h };
+  const avail = H - m.t - m.b - 3 * gapY;
+  const A = { top: m.t, h: Math.round(avail * 0.5) };
+  const B = { top: A.top + A.h + gapY, h: Math.round(avail * 0.16) };
+  const C = { top: B.top + B.h + gapY, h: Math.round(avail * 0.16) };
+  const D = { top: C.top + C.h + gapY, h: avail - A.h - B.h - C.h };
   const { from, until } = histDomain(s);
   const pw = W - m.l - m.r;
   const x = (t) => m.l + ((t - from) / (until - from)) * pw;
@@ -1203,7 +1269,28 @@ function drawFleetChart(){
   const lbl = (y, txt) => `<text x="${m.l - 8}" y="${f(y + 3.5)}" text-anchor="end">${txt}</text>`;
 
   let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fleet capacity over ${esc(RANGES[s.range].label)}: used share split into locked and back within 5 hours, accounts blocked, and weekly burn versus pace">`;
-  svg += '<g class="grid">' + [yA(0), yA(50), yA(100), yB(0), yB(maxN), yC(0)].map(hline).join('') + '</g>';
+  // Expired-unused bars: one per reset on short ranges, one per local day on
+  // 30 / 90 days. Height = that capacity as a share of the fleet's week.
+  const perDay = s.range === '30d' || s.range === '90d';
+  const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const bars = [];
+  for (const e of (s.resets || []).filter((e) => e.units > 0 && e.fleetPct != null)) {
+    const t = Date.parse(e.at);
+    if (t < from || t > until) continue;
+    const key = perDay ? dayStart(t) : t;
+    let b = perDay ? bars.find((x) => x.key === key) : null;
+    if (!b) { b = { key, t0: perDay ? key : t, t1: perDay ? key + DAY_MS : t, pct: 0, events: [] }; bars.push(b); }
+    b.pct += e.fleetPct; b.events.push(e);
+  }
+  const dMax = [2, 5, 10, 20, 50, 100].find((v) => v >= Math.max(0, ...bars.map((b) => b.pct))) || 100;
+  const yD = (v) => D.top + (1 - Math.min(v, dMax) / dMax) * D.h;
+  svg += '<g class="grid">' + [yA(0), yA(50), yA(100), yB(0), yB(maxN), yC(0), yD(0), yD(dMax)].map(hline).join('') + '</g>';
+  svg += `<defs><pattern id="hx-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="var(--ink-2)" stroke-width="1.6"/></pattern></defs>`;
+  for (const b of bars) {
+    const w = perDay ? Math.max(2, x(b.t1) - x(b.t0) - 2) : Math.max(3, Math.min(8, pw / 160));
+    const bx = perDay ? x(b.t0) + 1 : x(b.t0) - w / 2;
+    svg += `<rect x="${f(bx)}" y="${f(yD(b.pct))}" width="${f(w)}" height="${f(Math.max(1, yD(0) - yD(b.pct)))}" fill="url(#hx-hatch)" stroke="var(--ink-2)" stroke-width="1" rx="1"/>`;
+  }
   svg += '<g class="thr">' + [th.warnPct, th.critPct].map((v) => hline(yA(v)) + lbl(yA(v), v)).join('') + hline(yC(1)) + '</g>';
   // Capacity panel: stacked areas, locked at the bottom, back-within-5h on top of it.
   for (const r of runs) {
@@ -1229,15 +1316,26 @@ function drawFleetChart(){
   }
   const { step, ticks } = timeTicks(from, until, W < 560 ? 4 : 7);
   svg += '<g class="axis">' + lbl(yA(0), '0%') + lbl(yA(50), '50%') + lbl(yA(100), '100%')
-    + lbl(yB(0), '0') + lbl(yB(maxN), maxN) + lbl(yC(1), '1&times;') + lbl(yC(rMax), `${rMax}&times;`)
+    + lbl(yB(0), '0') + lbl(yB(maxN), maxN) + lbl(yC(1), '1&times;') + lbl(yC(rMax), `${rMax}&times;`) + lbl(yD(0), '0%') + lbl(yD(dMax), `${dMax}%`)
     + ticks.map((t) => `<text x="${f(x(t))}" y="${H - 6}" text-anchor="middle">${esc(tickLabel(t, step))}</text>`).join('') + '</g>';
-  svg += `<text class="ptitle" x="${m.l}" y="${B.top - 7}">Accounts blocked</text><text class="ptitle" x="${m.l}" y="${C.top - 7}">Weekly burn vs sustainable pace</text>`;
+  svg += `<text class="ptitle" x="${m.l}" y="${B.top - 7}">Accounts blocked</text><text class="ptitle" x="${m.l}" y="${C.top - 7}">Weekly burn vs sustainable pace</text><text class="ptitle" x="${m.l}" y="${D.top - 7}">Expired unused at weekly resets (% of fleet week${perDay ? ', per day' : ''})</text>`;
   svg += `<g class="hover" style="display:none"><line class="cross" y1="${m.t}" y2="${H - m.b}"/>`
     + ['used', 'locked', 'blocked', 'pace'].map((k) => `<circle class="dot" r="4" data-k="${k}" fill="${k === 'used' ? FLEET_COLOR.soon : FLEET_COLOR[k]}"/>`).join('') + '</g>';
   svg += `<rect x="${m.l}" y="0" width="${pw}" height="${H}" fill="transparent"/></svg><div class="hist-tip" style="display:none"></div>`;
   histChart.innerHTML = svg;
 
   const live = pts.filter((p) => p.usedPct != null);
+  // Resets near the pointer: the hovered day's bar, or the closest reset bar.
+  const near = Math.max(gap, (until - from) / 120);
+  const expiredTip = (t) => {
+    const b = perDay ? bars.find((x) => t >= x.t0 && t < x.t1) : bars.reduce((best, x) => (Math.abs(x.t0 - t) <= near && (!best || Math.abs(x.t0 - t) < Math.abs(best.t0 - t)) ? x : best), null);
+    if (!b) return '';
+    const evs = [...b.events].sort((a, c) => c.units - a.units);
+    const head = perDay ? `${esc(fmtDay(new Date(b.t0).toISOString()))}: ${b.pct.toFixed(1)}% of fleet week` : `${esc(fmtDay(evs[0].at))} ${esc(fmtClock(evs[0].at))}: ${b.pct.toFixed(1)}% of fleet week`;
+    return `<div class="tr" style="margin-top:4px">${hatchSwatch()}<span>Expired unused</span><b>${head}</b></div>`
+      + evs.slice(0, 3).map((e) => `<div class="tr"><span style="width:18px"></span><span>${esc(e.label)}</span><b>${Math.round(e.unusedPct)}% unused${e.approx ? ' ~' : ''}</b></div>`).join('')
+      + (evs.length > 3 ? `<div class="tr"><span style="width:18px"></span><span>+${evs.length - 3} more</span></div>` : '');
+  };
   const svgEl = histChart.querySelector('svg'), hov = svgEl.querySelector('.hover'), tip = histChart.querySelector('.hist-tip');
   const hide = () => { hov.style.display = 'none'; tip.style.display = 'none'; };
   const dot = (k, y) => { const c = hov.querySelector(`[data-k="${k}"]`); c.style.display = y == null ? 'none' : ''; if (y != null) { c.setAttribute('cx', f(cxNow)); c.setAttribute('cy', f(y)); } };
@@ -1261,7 +1359,8 @@ function drawFleetChart(){
       + row(areaSwatch(FLEET_COLOR.soon, 0.6), '&nbsp;&nbsp;back within 5h', `${Math.round(p.backSoonPct)}%`)
       + row(areaSwatch('var(--hair)', 1), 'Free', `${Math.round(p.freePct)}%`)
       + row(plainSwatch(FLEET_COLOR.blocked), 'Blocked', `${p.blocked} of ${p.total}`)
-      + row(plainSwatch(FLEET_COLOR.pace), 'Weekly burn', p.paceRatio == null ? '&mdash;' : `${p.paceRatio.toFixed(1)}&times; pace`);
+      + row(plainSwatch(FLEET_COLOR.pace), 'Weekly burn', p.paceRatio == null ? '&mdash;' : `${p.paceRatio.toFixed(1)}&times; pace`)
+      + expiredTip(t);
     tip.style.display = '';
     const cpx = cxNow * (box.width / W), tw = tip.offsetWidth;
     tip.style.left = `${cpx + 14 + tw > box.width ? cpx - 14 - tw : cpx + 14}px`;
@@ -1286,7 +1385,18 @@ function demoFleetHistory(range){
   });
   const used = points.map((p) => p.usedPct);
   const summary = { avgUsedPct: used.reduce((a, b) => a + b, 0) / used.length, maxUsedPct: Math.max(...used), minFreePct: Math.min(...points.map((p) => p.freePct)), blockedMs: points.filter((p) => p.blocked).length * stepMs, peakBlocked: Math.max(...points.map((p) => p.blocked)), maxAccounts: accts.length, avgPaceRatio: 1.2 };
-  return { points, summary, intervalMs: stepMs };
+  const resets = [];
+  const W = accts.reduce((t, a) => t + tierWeight(a.tier).weight, 0);
+  accts.forEach((a, j) => traces[j].forEach((r, i) => {
+    const prev = traces[j][i - 1];
+    if (prev && r.weekly.pct < prev.weekly.pct - 20) {
+      const wt = tierWeight(a.tier).weight, unused = 100 - prev.weekly.pct;
+      resets.push({ account: a.id, label: a.label, tier: a.tier, weight: wt, at: r.ts, usedPct: prev.weekly.pct, unusedPct: unused, units: (wt * unused) / 100, approx: false, fleetPct: (100 * wt * unused) / 100 / W });
+    }
+  }));
+  const units = resets.reduce((t, e) => t + e.units, 0);
+  Object.assign(summary, { resets: resets.length, expiredUnusedUnits: units, expiredUnusedPct: resets.length ? (100 * units) / resets.reduce((t, e) => t + e.weight, 0) : null });
+  return { points, summary, resets, intervalMs: stepMs };
 }
 
 // Demo history (?demo): a plausible week-shaped trace per fake account so the
