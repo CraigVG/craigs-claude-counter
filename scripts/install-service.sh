@@ -23,14 +23,22 @@ cat > "$PLIST" <<PLIST
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <!-- Without a ProcessType, launchd runs an agent with light CPU and I/O
+       limits; the engine serves the app and dashboard, so it runs unthrottled
+       (a 90-day fleet chart took ~8 s throttled vs ~0.6 s). -->
+  <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>$DIR/logs/server.log</string>
   <key>StandardErrorPath</key><string>$DIR/logs/server.err.log</string>
 </dict>
 </plist>
 PLIST
 
-launchctl unload "$PLIST" 2>/dev/null || true
-launchctl load -w "$PLIST"
+# bootout/bootstrap with the user's GUI domain also work from an SSH session,
+# where plain load/unload target the wrong bootstrap namespace.
+DOMAIN="gui/$(id -u)"
+launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+launchctl enable "$DOMAIN/$LABEL"
+launchctl bootstrap "$DOMAIN" "$PLIST"
 sleep 2
 PORT="${CLAUDE_USAGE_PORT:-4319}"
 if curl -fsS -m 5 "http://127.0.0.1:$PORT/api/usage" >/dev/null 2>&1; then
