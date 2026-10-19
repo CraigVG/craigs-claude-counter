@@ -73,9 +73,9 @@ struct DashboardView: View {
                         Spacer(minLength: 0)
                     } else {
                         if let f = fleet {
-                            FleetBar(fleet: f, now: model.tick, compact: compact, narrow: narrow)
+                            FleetBar(fleet: f, compact: compact, narrow: narrow)
                         }
-                        SummaryStrip(accounts: accounts, now: model.tick, compact: compact)
+                        SummaryStrip(accounts: accounts, compact: compact)
                         ScrollView(showsIndicators: false) {
                             if narrow { cardsList } else { board(layout) }
                         }
@@ -132,7 +132,7 @@ struct DashboardView: View {
     private var cardsList: some View {
         VStack(spacing: 12) {
             ForEach(accounts) { a in
-                AccountCard(a: a, now: model.tick,
+                AccountCard(a: a,
                             onRelogin: { model.openReLogin(a) },
                             onRemove: { model.openRemove(a) },
                             onOpen: { model.openHistory(a) })
@@ -141,18 +141,7 @@ struct DashboardView: View {
     }
 
     private var freshness: some View {
-        let s = model.loadedAt.map { Int(model.tick.timeIntervalSince($0)) } ?? 0
-        let behind = (model.lastError != nil) || s > 90
-        let txt: String = model.lastError != nil ? "engine offline"
-            : model.loadedAt == nil ? "loading…"
-            : s < 2 ? "updated just now"
-            : s < 60 ? "updated \(s)s ago" : "updated \(s/60)m \(s%60)s ago"
-        return HStack(spacing: 7) {
-            Circle().fill(behind ? Theme.warn : Theme.ok).frame(width: 6, height: 6)
-            Text(txt).font(Theme.mono(11.5, .regular))
-        }
-        .foregroundColor(behind ? Theme.warn : Theme.ink3)
-        .padding(.trailing, 4)
+        Freshness(loadedAt: model.loadedAt, offline: model.lastError != nil)
     }
 
     // MARK: board
@@ -160,7 +149,7 @@ struct DashboardView: View {
         VStack(spacing: 0) {
             boardHeader(layout)
             ForEach(Array(accounts.enumerated()), id: \.element.id) { _, a in
-                AccountRowView(a: a, now: model.tick, layout: layout,
+                AccountRowView(a: a, layout: layout,
                                onRelogin: { model.openReLogin(a) },
                                onRemove: { model.openRemove(a) },
                                onOpen: { model.openHistory(a) })
@@ -257,11 +246,39 @@ struct DashboardView: View {
     }
 }
 
+/// "updated 12s ago". The only view on the board that ticks every second, so
+/// it carries its own one-second timeline instead of a model-wide clock.
+struct Freshness: View {
+    let loadedAt: Date?
+    let offline: Bool
+
+    var body: some View {
+        if offline || loadedAt == nil {
+            label(offline ? "engine offline" : "loading…", behind: offline)
+        } else if let at = loadedAt {
+            TimelineView(.periodic(from: at, by: 1)) { ctx in
+                let s = max(0, Int(ctx.date.timeIntervalSince(at)))
+                label(s < 2 ? "updated just now"
+                      : s < 60 ? "updated \(s)s ago" : "updated \(s/60)m \(s%60)s ago",
+                      behind: s > 90)
+            }
+        }
+    }
+
+    private func label(_ txt: String, behind: Bool) -> some View {
+        HStack(spacing: 7) {
+            Circle().fill(behind ? Theme.warn : Theme.ok).frame(width: 6, height: 6)
+            Text(txt).font(Theme.mono(11.5, .regular))
+        }
+        .foregroundColor(behind ? Theme.warn : Theme.ink3)
+        .padding(.trailing, 4)
+    }
+}
+
 // MARK: - Row
 
 struct AccountRowView: View {
     let a: AccountDTO
-    let now: Date
     var layout = BoardLayout(compact: false)
     var onRelogin: () -> Void
     var onRemove: () -> Void
@@ -279,8 +296,8 @@ struct AccountRowView: View {
             Rectangle().fill(tickColor).frame(width: layout.tick, height: layout.tickHeight)
             account.frame(maxWidth: .infinity, alignment: .leading)
             plan.frame(width: layout.plan, alignment: .leading)
-            MetricCell(w: a.usage?.session, kind: .session, dim: a.isRelogin, now: now, compact: compact).frame(width: layout.metric, alignment: .leading)
-            MetricCell(w: a.usage?.weekly, kind: .weekly, dim: a.isRelogin, now: now, compact: compact).frame(width: layout.metric, alignment: .leading)
+            MetricCell(w: a.usage?.session, kind: .session, dim: a.isRelogin, compact: compact).frame(width: layout.metric, alignment: .leading)
+            MetricCell(w: a.usage?.weekly, kind: .weekly, dim: a.isRelogin, compact: compact).frame(width: layout.metric, alignment: .leading)
             ModelCell(usage: a.usage, compact: compact).frame(width: layout.model, alignment: .leading)
             OverageCell(usage: a.usage, compact: compact).frame(width: layout.over, alignment: .leading)
             actions.frame(width: layout.action, alignment: .trailing)
@@ -360,15 +377,20 @@ struct MetricCell: View {
     let w: WindowDTO?
     let kind: MetricKind
     var dim: Bool = false
-    let now: Date
     var compact: Bool = false
 
     private var pct: Double? { w?.pct }
     private var sev: Severity { Severity.of(pct) }
 
-    private var resetLabel: String {
-        guard let pct = pct else { return kind == .session ? "no active session" : "no data" }
-        return pct > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt)
+    /// The line under the meter. Only a live countdown redraws on its own.
+    @ViewBuilder private var resetLabel: some View {
+        if let pct = pct, pct > 0 {
+            Countdown(target: TimeFmt.parse(w?.resetsAt)) { now in Text(TimeFmt.resetText(w?.resetsAt, now: now)) }
+        } else if pct != nil {
+            Text(TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt))
+        } else {
+            Text(kind == .session ? "no active session" : "no data")
+        }
     }
     private var resetColor: Color {
         guard let pct = pct else { return Theme.ink4 }
@@ -394,14 +416,14 @@ struct MetricCell: View {
                 HStack(alignment: .center, spacing: 6) {
                     pctText(15).frame(width: 40, alignment: .leading)
                     Meter(pct: pct ?? 2, sev: pct == nil ? .idle : sev, maxW: 42).frame(width: 42)
-                    Text(resetLabel).font(Theme.mono(10.5, .regular)).foregroundColor(resetColor)
+                    resetLabel.font(Theme.mono(10.5, .regular)).foregroundColor(resetColor)
                         .lineLimit(1).minimumScaleFactor(0.85)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 7) {
                     pctText(23)
                     Meter(pct: pct ?? 2, sev: pct == nil ? .idle : sev)
-                    Text(resetLabel).font(Theme.mono(11, .regular)).foregroundColor(resetColor)
+                    resetLabel.font(Theme.mono(11, .regular)).foregroundColor(resetColor)
                 }
             }
         }
@@ -532,7 +554,6 @@ struct OverageCell: View {
 /// (hatched), the rest of the track being free now. Mirrors the web block.
 struct FleetBar: View {
     let fleet: FleetDTO
-    let now: Date
     var compact: Bool = false
     var narrow: Bool = false
 
@@ -663,7 +684,8 @@ struct FleetBar: View {
                     HStack(spacing: 4) {
                         Text(e.account).foregroundColor(Theme.ink2)
                         Text(e.kind).foregroundColor(Theme.ink3)
-                        Text(TimeFmt.inText(e.at, now: now)).font(Theme.mono(12, .semibold)).foregroundColor(Theme.ink)
+                        Countdown(target: TimeFmt.parse(e.at)) { now in Text(TimeFmt.inText(e.at, now: now)) }
+                            .font(Theme.mono(12, .semibold)).foregroundColor(Theme.ink)
                         Text(String(format: "+%.1f%%", e.restoresPct)).font(Theme.mono(12, .medium)).foregroundColor(Theme.ok)
                     }
                     .lineLimit(1)
@@ -687,10 +709,11 @@ struct FleetBar: View {
 
 struct SummaryStrip: View {
     let accounts: [AccountDTO]
-    let now: Date
     var compact: Bool = false
 
-    private struct Info { var tone: Severity; var sig: String; var line: AttributedString; var attn: Int; var total: Int }
+    /// `line` takes the current time because the warning lines end in a reset
+    /// countdown; `resetsAt` is that reset, so only the line's text redraws.
+    private struct Info { var tone: Severity; var sig: String; var line: (Date) -> AttributedString; var resetsAt: Date? = nil; var attn: Int; var total: Int }
 
     var body: some View {
         let info = compute()
@@ -700,7 +723,8 @@ struct SummaryStrip: View {
                 .padding(.horizontal, 9).padding(.vertical, compact ? 3 : 5)
                 .background(sigColor(info.tone).opacity(0.10))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(sigColor(info.tone).opacity(0.5), lineWidth: 1))
-            Text(info.line).font(Theme.ui(compact ? 13 : 14)).foregroundColor(Theme.ink2)
+            Countdown(target: info.resetsAt) { now in Text(info.line(now)) }
+                .font(Theme.ui(compact ? 13 : 14)).foregroundColor(Theme.ink2)
                 .lineLimit(compact ? 1 : 2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Text(info.attn > 0 ? "\(info.attn) of \(info.total) need attention" : "all \(info.total) healthy")
@@ -711,7 +735,7 @@ struct SummaryStrip: View {
         .background(Theme.panel)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
-            HStack(spacing: 0) { Rectangle().fill(sigColor(compute().tone)).frame(width: 3); Spacer() }
+            HStack(spacing: 0) { Rectangle().fill(sigColor(info.tone)).frame(width: 3); Spacer() }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
         )
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hair, lineWidth: 1))
@@ -738,22 +762,22 @@ struct SummaryStrip: View {
 
         if let w = worst, w.pct >= Theme.critPct {
             return Info(tone: .alarm, sig: "At limit",
-                        line: line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(TimeFmt.resetText(w.resets, now: now))"),
-                        attn: attn, total: accounts.count)
+                        line: { now in line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(TimeFmt.resetText(w.resets, now: now))") },
+                        resetsAt: TimeFmt.parse(w.resets), attn: attn, total: accounts.count)
         } else if !relogin.isEmpty {
             let l = relogin.count == 1 ? "**\(relogin[0].name)** needs you to sign in again"
                                        : "**\(relogin.count) accounts** need you to sign in again"
-            return Info(tone: .alarm, sig: "Re-login", line: line(l), attn: attn, total: accounts.count)
+            return Info(tone: .alarm, sig: "Re-login", line: { _ in line(l) }, attn: attn, total: accounts.count)
         } else if let w = worst, w.pct >= Theme.warnPct {
             return Info(tone: .warn, sig: "Warning",
-                        line: line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(TimeFmt.resetText(w.resets, now: now))"),
-                        attn: attn, total: accounts.count)
+                        line: { now in line("**\(w.label)** is at **\(Int(w.pct))%** (\(w.kind)) — \(TimeFmt.resetText(w.resets, now: now))") },
+                        resetsAt: TimeFmt.parse(w.resets), attn: attn, total: accounts.count)
         } else if let w = worst {
             return Info(tone: .normal, sig: "All clear",
-                        line: line("Most used: **\(w.label)** at **\(Int(w.pct))%** — plenty of headroom"),
+                        line: { _ in line("Most used: **\(w.label)** at **\(Int(w.pct))%** — plenty of headroom") },
                         attn: 0, total: accounts.count)
         }
-        return Info(tone: .normal, sig: "All clear", line: line("No usage right now"), attn: 0, total: accounts.count)
+        return Info(tone: .normal, sig: "All clear", line: { _ in line("No usage right now") }, attn: 0, total: accounts.count)
     }
 }
 

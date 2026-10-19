@@ -3,7 +3,6 @@ import SwiftUI
 /// Stacked card for one account — used when the window is too narrow for the table.
 struct AccountCard: View {
     let a: AccountDTO
-    let now: Date
     var onRelogin: () -> Void
     var onRemove: () -> Void
     var onOpen: () -> Void = {}
@@ -90,9 +89,15 @@ struct AccountCard: View {
                 }
             }
             Meter(pct: pct ?? 2, sev: pct == nil ? .idle : sev, maxW: .infinity)
-            Text((pct ?? 0) > 0 ? TimeFmt.resetText(w?.resetsAt, now: now) : TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt))
-                .font(Theme.mono(10.5, .regular))
-                .foregroundColor(sev == .alarm ? Color(hex: 0xcf9a9c) : Theme.ink4)
+            Group {
+                if (pct ?? 0) > 0 {
+                    Countdown(target: TimeFmt.parse(w?.resetsAt)) { now in Text(TimeFmt.resetText(w?.resetsAt, now: now)) }
+                } else {
+                    Text(TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt))
+                }
+            }
+            .font(Theme.mono(10.5, .regular))
+            .foregroundColor(sev == .alarm ? Color(hex: 0xcf9a9c) : Theme.ink4)
         }
         .opacity(a.isRelogin ? 0.4 : 1)
     }

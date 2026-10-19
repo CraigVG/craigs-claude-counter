@@ -21,7 +21,6 @@ final class CounterModel: ObservableObject {
     @Published var snapshot: UsageSnapshot?
     @Published var lastError: String?
     @Published var loadedAt: Date?
-    @Published var tick = Date()
     @Published var activeSheet: ActiveSheet? = nil
 
     /// The local engine (the Node server). Override with CCC_BASE_URL.
@@ -31,16 +30,12 @@ final class CounterModel: ObservableObject {
     }()
 
     private var pollTimer: Timer?
-    private var tickTimer: Timer?
 
     func start() {
         guard pollTimer == nil else { return }
         Task { await load() }
         pollTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { await self?.load() }
-        }
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick = Date() }
         }
     }
 

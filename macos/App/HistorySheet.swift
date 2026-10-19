@@ -8,8 +8,8 @@ import Charts
 /// Performance: everything the chart draws is built once per load
 /// (`HistoryData`), the chart is an equatable view that only redraws when that
 /// data changes, and hover lives in a sibling layer, so moving the pointer
-/// redraws only the crosshair. The sheet does not observe the model: its
-/// one-second clock tick would otherwise redraw the chart every second.
+/// redraws only the crosshair. The sheet does not observe the model: each
+/// 30-second usage poll would otherwise redraw the chart.
 struct HistorySheet: View {
     let model: CounterModel
     let account: AccountDTO
