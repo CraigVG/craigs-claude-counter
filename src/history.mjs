@@ -12,6 +12,7 @@ import { join } from 'node:path';
 
 const FILE_RE = /^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const DAY_MS = 86_400_000;
+const RESET_JITTER_MS = 3_600_000;
 
 const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
 const fileFor = (ms) => `usage-${dayOf(ms)}.jsonl`;
@@ -112,11 +113,19 @@ export function summarize(records, { warnPct = 70, critPct = 90 } = {}) {
     const sum = xs.reduce((a, b) => a + b, 0);
     return { latest: xs[xs.length - 1], first: xs[0], min: Math.min(...xs), max: Math.max(...xs), avg: Math.round((sum / xs.length) * 10) / 10 };
   };
+  // Upstream reports the same reset with sub-second jitter from poll to poll
+  // (12:59:59.83 then 13:00:00.45), so a reset only counts when the time moves
+  // by more than RESET_JITTER_MS. Non-date values compare as strings.
+  const moved = (a, b) => {
+    const ta = Date.parse(a), tb = Date.parse(b);
+    if (Number.isNaN(ta) || Number.isNaN(tb)) return a !== b;
+    return Math.abs(ta - tb) > RESET_JITTER_MS;
+  };
   const resets = (rs, key) => {
     let n = 0, prev;
     for (const r of rs) {
       const at = r[key]?.resetsAt || null;
-      if (prev !== undefined && at && prev && at !== prev) n++;
+      if (prev && at && moved(at, prev)) n++;
       if (at) prev = at;
     }
     return n;
@@ -131,6 +140,13 @@ export function summarize(records, { warnPct = 70, critPct = 90 } = {}) {
       (models[m.name] ||= []).push(m.pct);
     }
     const overages = rs.map((r) => r.overage).filter(Boolean);
+    // Spend added in the window: the sum of increases. The used amount drops
+    // back at each billing-cycle reset, so latest - first can go negative.
+    let spent = 0;
+    for (let i = 1; i < overages.length; i++) {
+      const d = (overages[i].usedUsd ?? 0) - (overages[i - 1].usedUsd ?? 0);
+      if (d > 0) spent += d;
+    }
     out.push({
       account,
       label: last.label,
@@ -143,7 +159,7 @@ export function summarize(records, { warnPct = 70, critPct = 90 } = {}) {
       resets: { session: resets(rs, 'session'), weekly: resets(rs, 'weekly') },
       models: Object.fromEntries(Object.entries(models).map(([k, v]) => [k, stats(v)])),
       overage: overages.length
-        ? { latestUsedUsd: overages[overages.length - 1].usedUsd, firstUsedUsd: overages[0].usedUsd, deltaUsd: Math.round((overages[overages.length - 1].usedUsd - overages[0].usedUsd) * 100) / 100, limitUsd: overages[overages.length - 1].limitUsd, latestPct: overages[overages.length - 1].pct }
+        ? { latestUsedUsd: overages[overages.length - 1].usedUsd, firstUsedUsd: overages[0].usedUsd, deltaUsd: Math.round((overages[overages.length - 1].usedUsd - overages[0].usedUsd) * 100) / 100, spentUsd: Math.round(spent * 100) / 100, limitUsd: overages[overages.length - 1].limitUsd, latestPct: overages[overages.length - 1].pct }
         : null,
       atLimitSamples: live.filter((r) => worst(r) >= critPct).length,
       warningSamples: live.filter((r) => worst(r) >= warnPct && worst(r) < critPct).length,

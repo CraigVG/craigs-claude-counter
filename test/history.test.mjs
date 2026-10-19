@@ -126,6 +126,27 @@ test('prune removes day files older than retention', async () => {
   } finally { await cleanup(); }
 });
 
+test('summarize ignores sub-second jitter in reset times and counts real resets', () => {
+  const t0 = Date.parse('2026-10-17T00:00:00Z');
+  const mk = (i, resetsAt) => recordFrom(acct({ usage: { session: { pct: 0, resetsAt: null }, weekly: { pct: 50, resetsAt } } }), iso(t0 + i * H));
+  const recs = [
+    mk(0, '2026-10-17T12:59:59.832707+00:00'),
+    mk(1, '2026-10-17T13:00:00.451761+00:00'),
+    mk(2, '2026-10-17T12:59:59.912000+00:00'),
+    mk(3, '2026-10-24T13:00:00+00:00'), // the week rolled over
+    mk(4, '2026-10-24T13:00:00.120000+00:00'),
+  ];
+  assert.deepEqual(summarize(recs)[0].resets, { session: 0, weekly: 1 });
+});
+
+test('summarize counts overage spent across a billing-cycle reset', () => {
+  const t0 = Date.parse('2026-10-01T00:00:00Z');
+  const mk = (i, used) => recordFrom(acct({ usage: { session: { pct: 0 }, weekly: { pct: 10 }, overage: { enabled: true, usedUsd: used, limitUsd: 600, pct: 0 } } }), iso(t0 + i * H));
+  const o = summarize([mk(0, 500), mk(1, 580), mk(2, 0), mk(3, 25)])[0].overage;
+  assert.equal(o.deltaUsd, -475);
+  assert.equal(o.spentUsd, 105);
+});
+
 test('summarize reports per-account stats, resets, overage delta, and time at limit', () => {
   const t0 = Date.parse('2026-09-08T00:00:00Z');
   const mk = (i, session, weekly, resetsAt, used, extra = {}) => recordFrom(acct({
@@ -150,7 +171,7 @@ test('summarize reports per-account stats, resets, overage delta, and time at li
   assert.deepEqual(a.weekly, { latest: 5, first: 50, min: 5, max: 70, avg: 46.3 });
   assert.deepEqual(a.resets, { session: 0, weekly: 1 });
   assert.equal(a.models.Fable.max, 35);
-  assert.deepEqual(a.overage, { latestUsedUsd: 4.25, firstUsedUsd: 1, deltaUsd: 3.25, limitUsd: 100, latestPct: 4.25 });
+  assert.deepEqual(a.overage, { latestUsedUsd: 4.25, firstUsedUsd: 1, deltaUsd: 3.25, spentUsd: 3.25, limitUsd: 100, latestPct: 4.25 });
   assert.equal(a.atLimitSamples, 1);
   assert.equal(a.warningSamples, 1);
   assert.equal(a.errorSamples, 1);
