@@ -174,7 +174,11 @@ struct DashboardView: View {
             headCell("ACCOUNT", .account).frame(maxWidth: .infinity, alignment: .leading)
             headCell("PLAN", .plan).frame(width: layout.plan, alignment: .leading)
             headCell("SESSION · 5H", .session).frame(width: layout.metric, alignment: .leading)
-            headCell("WEEKLY", .weekly).frame(width: layout.metric, alignment: .leading)
+            HStack(spacing: 10) {
+                headCell("WEEKLY", .weekly)
+                headCell("RESETS", .reset)
+            }
+            .frame(width: layout.metric, alignment: .leading)
             headCell("MODEL WK", .model).frame(width: layout.model, alignment: .leading)
             headCell("OVERAGE", .overage).frame(width: layout.over, alignment: .leading)
             Color.clear.frame(width: layout.action)

@@ -129,6 +129,7 @@
   .head .sort:hover .arr { opacity: .5; }
   .head .sort.on .arr { opacity: 1; color: var(--accent); }
   .head .sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .head .head-pair { display: flex; align-items: center; gap: 12px; }
   .foot .sortnote button { all: unset; cursor: pointer; color: var(--ink-3); text-decoration: underline; text-underline-offset: 2px; }
   .foot .sortnote button:hover { color: var(--ink-2); }
 
@@ -341,7 +342,7 @@
           <div><button class="sort" type="button" data-sort="account" title="Sort by account name">Account<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="plan" title="Sort by plan (weekly capacity)">Plan<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="session" title="Sort by session usage">Session&nbsp;&middot;&nbsp;5h<span class="arr" aria-hidden="true"></span></button></div>
-          <div><button class="sort" type="button" data-sort="weekly" title="Sort by weekly usage">Weekly<span class="arr" aria-hidden="true"></span></button></div>
+          <div class="head-pair"><button class="sort" type="button" data-sort="weekly" title="Sort by weekly usage">Weekly<span class="arr" aria-hidden="true"></span></button><button class="sort" type="button" data-sort="reset" title="Sort by weekly reset (soonest first)">Resets<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="model" title="Sort by per-model weekly usage">Model&nbsp;wk<span class="arr" aria-hidden="true"></span></button></div>
           <div><button class="sort" type="button" data-sort="overage" title="Sort by overage spent">Overage<span class="arr" aria-hidden="true"></span></button></div>
           <div></div>
@@ -416,7 +417,9 @@ function renderSortUi(){
   const note = $('#sortnote');
   if(sort.key === 'headroom'){ note.innerHTML = 'sorted by headroom &middot; most available on top'; return; }
   const col = SORT_COLUMNS[sort.key];
-  const text = sort.key === 'account' ? (sort.dir === 'asc' ? 'A&ndash;Z' : 'Z&ndash;A') : (sort.dir === 'asc' ? 'lowest first' : 'highest first');
+  const text = sort.key === 'account' ? (sort.dir === 'asc' ? 'A&ndash;Z' : 'Z&ndash;A')
+    : sort.key === 'reset' ? (sort.dir === 'asc' ? 'soonest first' : 'latest first')
+    : (sort.dir === 'asc' ? 'lowest first' : 'highest first');
   note.innerHTML = `sorted by ${esc(col.label)} &middot; ${text} &middot; <button type="button" id="sort-reset">sort by headroom</button>`;
   $('#sort-reset').onclick = () => setSort(DEFAULT_SORT);
 }

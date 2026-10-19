@@ -23,15 +23,25 @@ export function headroomKey(a, { warnPct = 70, critPct = 90 } = {}) {
   return tier * 1000 + worst;
 }
 
+function resetTime(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : t;
+}
+
 // Sortable columns. `value` returns null when the account has no data for the
 // column; those rows always sink to the bottom, whichever direction is chosen.
 // `first` is the direction a first click uses: usage columns put the most
-// headroom on top (like the default board), plan and overage the largest.
+// headroom on top (like the default board), plan and overage the largest, and
+// the weekly reset the soonest reset.
 export const SORT_COLUMNS = {
   account: { label: 'account', first: 'asc', value: (a) => String(a.label || a.id || '').toLowerCase() },
   plan: { label: 'plan', first: 'desc', value: (a) => (a.tier ? tierWeight(a.tier).weight : null) },
   session: { label: 'session', first: 'asc', value: (a) => (a.usage ? (a.usage.session?.pct ?? 0) : null) },
   weekly: { label: 'weekly', first: 'asc', value: (a) => a.usage?.weekly?.pct ?? null },
+  // When the all-models weekly window resets. An idle window has no reset
+  // time (nothing to give back), so it sinks with the no-data rows.
+  reset: { label: 'weekly reset', first: 'asc', value: (a) => resetTime(a.usage?.weekly?.resetsAt) },
   model: {
     label: 'model weekly', first: 'asc',
     value: (a) => {

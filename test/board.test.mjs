@@ -55,6 +55,21 @@ test('clicking a header cycles natural direction, reverse, then back to headroom
   assert.deepEqual(nextSort({ key: 'weekly', dir: 'desc' }, 'overage'), { key: 'overage', dir: 'desc' });
 });
 
+test('weekly reset sorts soonest first; idle windows sink in both directions', () => {
+  const at = (label, weekly, resetsAt) => ({ id: label, label, tier: 'Max 20x', usage: { session: win(0), weekly: { pct: weekly, resetsAt } } });
+  const list = [
+    at('late', 10, '2026-10-24T05:00:00Z'),
+    at('idle', 0, null),
+    at('soon', 90, '2026-10-20T17:00:00Z'),
+    at('mid', 50, '2026-10-22T05:00:00Z'),
+    relogin('gone'),
+  ];
+  assert.deepEqual(labels(sortAccounts(list, { key: 'reset', dir: 'asc' })), ['soon', 'mid', 'late', 'idle', 'gone']);
+  assert.deepEqual(labels(sortAccounts(list, { key: 'reset', dir: 'desc' })), ['late', 'mid', 'soon', 'idle', 'gone']);
+  assert.deepEqual(nextSort(DEFAULT_SORT, 'reset'), { key: 'reset', dir: 'asc' });
+  assert.deepEqual(parseSort('reset:desc'), { key: 'reset', dir: 'desc' });
+});
+
 test('stored sort strings round-trip and junk falls back to headroom', () => {
   assert.deepEqual(parseSort('overage:asc'), { key: 'overage', dir: 'asc' });
   assert.deepEqual(parseSort('headroom:asc'), DEFAULT_SORT);

@@ -2,15 +2,17 @@ import Foundation
 
 /// Board ordering: headroom by default (most available on top), or a column.
 /// Mirrors src/board.mjs so the app and the web board agree: a first click sorts
-/// usage columns lowest first and plan / overage largest first, a second click
+/// usage columns lowest first, plan / overage largest first and the weekly reset
+/// soonest first, a second click
 /// reverses, a third returns to headroom. Accounts with no data for the column
 /// sink to the bottom in either direction; ties fall back to headroom, then name.
 enum SortColumn: String, CaseIterable {
-    case headroom, account, plan, session, weekly, model, overage
+    case headroom, account, plan, session, weekly, reset, model, overage
 
     var label: String {
         switch self {
         case .model: return "model weekly"
+        case .reset: return "weekly reset"
         default: return rawValue
         }
     }
@@ -22,6 +24,7 @@ enum SortColumn: String, CaseIterable {
         case .plan: return "Sort by plan (weekly capacity)"
         case .session: return "Sort by session usage"
         case .weekly: return "Sort by weekly usage"
+        case .reset: return "Sort by weekly reset (soonest first)"
         case .model: return "Sort by per-model weekly usage"
         case .overage: return "Sort by overage spent"
         }
@@ -37,6 +40,8 @@ enum SortColumn: String, CaseIterable {
         case .plan: return a.tier.map(Self.planWeight)
         case .session: return a.usage.map { $0.session?.pct ?? 0 }
         case .weekly: return a.usage?.weekly?.pct
+        // An idle weekly window has no reset time, so it sinks with no-data rows.
+        case .reset: return a.usage?.weekly?.resetsAt.flatMap(TimeFmt.parse)?.timeIntervalSince1970
         case .model: return (a.usage?.weeklyModels ?? []).compactMap(\.pct).max()
         case .overage:
             guard let o = a.usage?.overage, o.enabled == true else { return nil }
@@ -80,6 +85,7 @@ struct BoardSort: Equatable {
         switch column {
         case .headroom: return "sorted by headroom · most available on top"
         case .account: return "sorted by account · \(ascending ? "A–Z" : "Z–A")"
+        case .reset: return "sorted by weekly reset · \(ascending ? "soonest" : "latest") first"
         default: return "sorted by \(column.label) · \(ascending ? "lowest" : "highest") first"
         }
     }
