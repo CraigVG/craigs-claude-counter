@@ -145,7 +145,8 @@ struct FleetData {
 
         let until = Date(), want = until.addingTimeInterval(-range.seconds)
         let clipped = samples.first.map { $0.date.timeIntervalSince(want) > range.seconds * 0.1 } ?? false
-        domain = (clipped ? samples[0].date : want)...until
+        let shorten = clipped && until.timeIntervalSince(samples[0].date) >= range.seconds * 0.25
+        domain = (shorten ? samples[0].date : want)...until
         let sm = resp.summary
         maxAccounts = max(1, sm?.maxAccounts ?? samples.map(\.total).max() ?? 1)
         // Right after a weekly reset little of the week has elapsed and the
@@ -196,7 +197,7 @@ struct FleetData {
 
         var note = range.fleetStepLabel.map { "one point per \($0)" } ?? "a point every \(Int((resp.intervalMs ?? 300_000) / 60_000)) min"
         note += " · same math as the fleet bar: plan-weighted, an account counts its binding window"
-        if clipped { note += " · history starts \(domain.lowerBound.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))" }
+        if clipped, let first = samples.first { note += " · history starts \(first.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))" }
         footnote = note
     }
 }

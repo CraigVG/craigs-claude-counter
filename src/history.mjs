@@ -26,6 +26,7 @@ export function recordFrom(a, ts = new Date().toISOString()) {
   return {
     ts,
     account: a.id,
+    ...(a.provider ? { provider: a.provider } : {}),
     label: a.label || a.id,
     tier: a.tier || null,
     session: u ? win(u.session) : null,
@@ -180,7 +181,7 @@ export function summarize(records, { warnPct = 70, critPct = 90 } = {}) {
 // reset here. `approx` marks a reset whose last sample is more than an hour
 // from the reset time (engine off, or serving cached numbers). `units` is the
 // unused share in weekly-capacity units (Pro = 1, Max 20x = 7; see fleet.mjs).
-export function weeklyResets(records) {
+export function weeklyResets(records, { weights } = {}) {
   const last = new Map();
   const out = [];
   for (const r of records || []) {
@@ -191,7 +192,7 @@ export function weeklyResets(records) {
     const prev = last.get(r.account);
     if (prev && at - prev.at > RESET_JITTER_MS) {
       const used = Math.max(0, Math.min(100, prev.pct));
-      const { weight } = tierWeight(prev.tier || r.tier);
+      const { weight } = tierWeight(prev.tier || r.tier, weights);
       out.push({
         account: r.account, label: prev.label, tier: prev.tier || r.tier || null, weight,
         at: new Date(prev.at).toISOString(), usedPct: used, unusedPct: Math.round((100 - used) * 10) / 10,
@@ -209,7 +210,7 @@ export function weeklyResets(records) {
 // with `now` set to that poll (so "back within 5h" and pace are as of then).
 // `stepMs` thins the returned points (first poll per bucket); the summary
 // always covers every poll. Records must be sorted by ts.
-export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs = 300_000, stepMs = null, since = null } = {}) {
+export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs = 300_000, stepMs = null, since = null, weights } = {}) {
   const polls = [];
   let cur = null;
   for (const r of records || []) {
@@ -218,7 +219,7 @@ export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs =
   }
   const all = polls.map(({ ts, recs }) => {
     const accounts = recs.map((r) => ({ id: r.account, label: r.label, tier: r.tier, usage: usageFromRecord(r, { warnPct, critPct }) }));
-    const f = computeFleet(accounts, { now: Date.parse(ts), warnPct, critPct });
+    const f = computeFleet(accounts, { now: Date.parse(ts), warnPct, critPct, ...(weights ? { weights } : {}) });
     return {
       ts,
       usedPct: f.usedPct, freePct: f.freePct, backSoonPct: f.backSoonPct, lockedPct: f.lockedPct,
@@ -246,7 +247,7 @@ export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs =
   };
   // Weekly capacity that expired unused. Each reset also gets its share of the
   // fleet's weekly capacity at that moment (fleetPct), for the chart's bars.
-  const resets = weeklyResets(records).filter((e) => since == null || Date.parse(e.at) >= since);
+  const resets = weeklyResets(records, { weights }).filter((e) => since == null || Date.parse(e.at) >= since);
   const capAt = (iso) => {
     const t = Date.parse(iso);
     let best = null;
@@ -377,7 +378,7 @@ export function startUsagePoller({ collect, history, intervalMs = 300_000, initi
   const tick = async () => {
     const snap = await collect();
     const ts = snap.generatedAt || new Date().toISOString();
-    const n = await history.append((snap.accounts || []).map((a) => recordFrom(a, ts)));
+    const n = await history.append([...(snap.accounts || []), ...(snap.codex || [])].map((a) => recordFrom(a, ts)));
     if (Date.now() - lastPrune > DAY_MS) { lastPrune = Date.now(); await history.prune().catch(() => {}); }
     return n;
   };

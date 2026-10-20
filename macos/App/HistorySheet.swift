@@ -120,18 +120,21 @@ struct HistoryData {
             return HistorySample(date: d, session: r.session?.pct, weekly: r.weekly?.pct, model: m, stale: r.stale == true, error: r.error)
         }
         self.samples = samples
-        self.series = HistorySeries.all(modelName: modelName)
+        self.series = HistorySeries.all(modelName: modelName, hasSession: samples.contains { $0.session != nil })
 
+        // Shorten the axis to where the log starts only when it covers a
+        // quarter of the range or more; brand-new history keeps the full range.
         let until = Date(), want = until.addingTimeInterval(-range.seconds)
         let clipped = samples.first.map { $0.date.timeIntervalSince(want) > range.seconds * 0.1 } ?? false
-        let domain = (clipped ? samples[0].date : want)...until
+        let shorten = clipped && until.timeIntervalSince(samples[0].date) >= range.seconds * 0.25
+        let domain = (shorten ? samples[0].date : want)...until
         self.domain = domain
         self.lines = ChartLine.build(samples: samples, series: series, gapSeconds: range.gapSeconds, domain: domain)
         self.tiles = StatTile.from(summary, intervalMs: intervalMs)
 
         let every = range.stepLabel.map { "one sample per \($0)" } ?? "a sample every \(Int(intervalMs / 60_000)) min"
         var note = "\(every) · gaps = engine off or account unavailable"
-        if clipped { note += " · history starts \(domain.lowerBound.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))" }
+        if clipped, let first = samples.first { note += " · history starts \(first.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))" }
         self.footnote = note
     }
 }
@@ -487,11 +490,12 @@ struct HistorySeries: Identifiable {
     let drawOrder: Int
     let value: (HistorySample) -> Double?
 
-    static func all(modelName: String?) -> [HistorySeries] {
-        var out = [
-            HistorySeries(id: "weekly", label: "Weekly", color: Color(hex: 0x3987e5), dashed: false, drawOrder: 2) { $0.weekly },
-            HistorySeries(id: "session", label: "Session (5h)", color: Color(hex: 0x199e70), dashed: false, drawOrder: 0) { $0.session },
-        ]
+    /// `hasSession` is false for Codex when it reports no 5-hour window.
+    static func all(modelName: String?, hasSession: Bool = true) -> [HistorySeries] {
+        var out = [HistorySeries(id: "weekly", label: "Weekly", color: Color(hex: 0x3987e5), dashed: false, drawOrder: 2) { $0.weekly }]
+        if hasSession {
+            out.append(HistorySeries(id: "session", label: "Session (5h)", color: Color(hex: 0x199e70), dashed: false, drawOrder: 0) { $0.session })
+        }
         if let name = modelName {
             out.append(HistorySeries(id: "model", label: "\(name) weekly", color: Color(hex: 0xd95926), dashed: true, drawOrder: 1) { $0.model })
         }

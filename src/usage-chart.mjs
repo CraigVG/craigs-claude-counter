@@ -62,9 +62,11 @@ export function seriesFor(records) {
   for (const r of records || []) for (const m of r.models || []) {
     if (m && m.name && !models.includes(m.name)) models.push(m.name);
   }
+  // Codex may report no 5-hour window; leave the session series out then.
+  const hasSession = (records || []).some((r) => r.session?.pct != null);
   const out = [
     { key: 'weekly', label: 'Weekly', value: (r) => r.weekly?.pct ?? null },
-    { key: 'session', label: 'Session (5h)', value: (r) => r.session?.pct ?? null },
+    ...(hasSession ? [{ key: 'session', label: 'Session (5h)', value: (r) => r.session?.pct ?? null }] : []),
   ];
   if (models.length) {
     const name = models[0];

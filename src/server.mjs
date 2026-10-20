@@ -7,8 +7,9 @@ import { loadConfig, REFRESH_SKEW_MS } from './config.mjs';
 import { createCredStore, newAccountId } from './credstore.mjs';
 import * as oauthLib from './oauth.mjs';
 import * as usageLib from './usage.mjs';
+import { createCodexSource } from './codex.mjs';
 import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv, usageFromRecord, latestPerAccount, fleetHistory } from './history.mjs';
-import { computeFleet } from './fleet.mjs';
+import { computeFleet, DEFAULT_WEIGHTS } from './fleet.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(__dirname, '..', 'web');
@@ -262,6 +263,10 @@ export function createServer(deps = {}) {
   const gate = deps.gate || makeGate(config.upstreamConcurrency ?? 3); // caps upstream usage calls in flight
   const random = deps.random || Math.random;
   const thresholds = { warnPct: config.warnPct, critPct: config.critPct };
+  // Codex usage (separate from `accounts`; see src/codex.mjs). Tests pass none.
+  const codex = deps.codex !== undefined ? deps.codex
+    : (config.codexEnabled ? createCodexSource({ ttlMs: config.cacheTtlMs ?? 180_000, thresholds, log: (m) => console.log(m) }) : null);
+  const weights = config.codexWeight ? { ...DEFAULT_WEIGHTS, codex: config.codexWeight } : DEFAULT_WEIGHTS;
   // Usage history store (null when no dir is configured, e.g. in tests).
   const history = deps.history !== undefined ? deps.history
     : (config.historyDir ? createHistory({ dir: config.historyDir, retentionDays: config.historyRetentionDays, log: (m) => console.log(`[history] ${m}`) }) : null);
@@ -296,8 +301,13 @@ export function createServer(deps = {}) {
     const results = await Promise.all(
       accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, inflight, gate, random, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
     );
-    // `fleet` folds every account into one capacity-weighted picture (see src/fleet.mjs).
-    return { generatedAt: new Date().toISOString(), thresholds, accounts: results, fleet: computeFleet(results, thresholds) };
+    const codexEntries = codex ? await codex.get().catch(() => []) : [];
+    // `fleet` folds every account, Codex included, into one capacity-weighted
+    // picture (see src/fleet.mjs). `weights` lets the page use the same ones.
+    return {
+      generatedAt: new Date().toISOString(), thresholds, accounts: results, codex: codexEntries,
+      fleet: computeFleet([...results, ...codexEntries], { ...thresholds, weights }), weights,
+    };
   };
 
   // Shared query parsing for the history routes.
@@ -366,7 +376,7 @@ export function createServer(deps = {}) {
         if (q.error) return sendJson(res, 400, { error: q.error });
         const records = await history.query({ since: q.since, until: q.until, limit: 0 });
         const intervalMs = config.historyIntervalMs || 300_000;
-        const out = fleetHistory(records, { ...thresholds, intervalMs, stepMs: q.step, since: q.since });
+        const out = fleetHistory(records, { ...thresholds, intervalMs, stepMs: q.step, since: q.since, weights });
         return sendJson(res, 200, {
           since: new Date(q.since).toISOString(), until: new Date(q.until).toISOString(),
           step: url.searchParams.get('step') || null, intervalMs, thresholds, ...out,

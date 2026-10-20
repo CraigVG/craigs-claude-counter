@@ -79,6 +79,21 @@
   .fleet-free { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
   .fleet-free b { color: var(--ink); font-weight: 600; }
   .fleet-head .spacer { flex: 1; }
+  /* Codex: its own panel and bar under the fleet bar (it also counts in the fleet). */
+  .codex { cursor: pointer; }
+  .codex .cx-who { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .codex .cx-plan { font-family: var(--mono); font-size: 11px; color: var(--ink-3); border: 1px solid var(--hair); border-radius: 5px; padding: 1px 7px; white-space: nowrap; }
+  .codex .cx-credits { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+  .codex .cx-credits b { color: var(--ink-2); font-weight: 600; }
+  .codex .cx-win { display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 12px; margin-top: 8px; }
+  .codex .cx-win .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .codex .cx-win .v { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .codex .cx-win .v b { color: var(--ink); font-weight: 600; }
+  .codex .cx-bar { height: 10px; background: #20242c; border-radius: 5px; overflow: hidden; }
+  .codex .cx-bar > i { display: block; height: 100%; background: var(--calm); border-radius: 5px; transition: width .45s cubic-bezier(.2,.7,.3,1); }
+  .codex .cx-bar.warn > i { background: var(--warn); } .codex .cx-bar.alarm > i { background: var(--alarm); }
+  .codex .cx-note { font-family: var(--mono); font-size: 11px; color: var(--ink-4); margin-top: 8px; }
+  @media (max-width: 760px) { .codex .cx-win { grid-template-columns: 58px 1fr; } .codex .cx-win .v { grid-column: 1 / -1; } }
   .fleet-pace { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
   .fleet-pace b { color: var(--ink-2); font-weight: 600; }
   .fleet-pace.hot b { color: var(--warn); }
@@ -400,6 +415,7 @@
     </div>
 
     <div id="fleet" class="fleet" style="display:none"></div>
+    <div id="codex" class="fleet codex" style="display:none"></div>
 
     <div id="summary" class="summary" role="status" style="display:none"></div>
 
@@ -619,9 +635,37 @@ function rowFor(a){
 const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const fmtClock = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 function inText(iso){ const t = shortDur(iso); return t === 'now' ? 'now' : t ? `in ${t}` : ''; }
+// The fleet counts Claude accounts and Codex (served apart as latest.codex),
+// with the engine's weights so a Codex week weighs what the engine says.
+const codexEntries = () => latest?.codex || [];
 function fleetFor(accounts){
-  return computeFleet(accounts, { warnPct: latest?.thresholds?.warnPct ?? 70, critPct: latest?.thresholds?.critPct ?? 90 });
+  return computeFleet([...accounts, ...codexEntries()], { warnPct: latest?.thresholds?.warnPct ?? 70, critPct: latest?.thresholds?.critPct ?? 90, ...(latest?.weights ? { weights: latest.weights } : {}) });
 }
+
+// Codex panel: its own bar per rate-limit window, credits, click for history.
+function renderCodex(){
+  const el = $('#codex'), list = codexEntries();
+  if (!list.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = list.map((c) => {
+    const u = c.usage || {};
+    const wins = [['Weekly', u.weekly], ['5h', u.session]].filter(([, w]) => w && w.pct != null);
+    const credits = u.credits && u.credits.balance != null ? `<span class="cx-credits"><b>${Math.round(u.credits.balance).toLocaleString('en-US')}</b> credits</span>` : '';
+    const rows = wins.map(([k, w]) => {
+      const cls = w.pct >= 90 ? 'alarm' : w.pct >= 70 ? 'warn' : '';
+      const when = w.pct > 0 && w.resetsAt ? `<span data-reset="${esc(w.resetsAt)}">${esc(resetText(w.resetsAt))}</span>` : (w.resetsAt ? `resets ${esc(fmtDay(w.resetsAt))}` : '');
+      return `<div class="cx-win"><span class="k">${k}</span><div class="cx-bar ${cls}"><i style="width:${Math.max(1, Math.min(100, w.pct))}%"></i></div><span class="v"><b>${Math.round(w.pct)}%</b> used${when ? ' &middot; ' + when : ''}</span></div>`;
+    }).join('');
+    const note = c.stale ? `<div class="cx-note">${esc(c.message || 'cached')}</div>` : (u.limitReached ? `<div class="cx-note">limit reached (${esc(u.limitReached)})</div>` : '');
+    return `<div data-codex="${esc(c.id)}" title="Click for Codex usage over time. Counts in the fleet bar.">
+      <div class="fleet-head"><span class="fleet-title">Codex</span><span class="cx-who">${esc(c.email || c.label)}</span><span class="cx-plan">${esc(c.tier || '')}</span><span class="spacer"></span>${credits}</div>
+      ${rows || '<div class="cx-note">no rate-limit windows reported</div>'}${note}
+    </div>`;
+  }).join('');
+  el.className = `fleet codex ${tone(list)}`;
+  function tone(l){ const w = Math.max(0, ...l.flatMap((c) => [c.usage?.weekly?.pct ?? 0, c.usage?.session?.pct ?? 0])); return w >= 90 ? 'alarm' : w >= 70 ? 'warn' : ''; }
+}
+$('#codex').addEventListener('click', (e) => { const d = e.target.closest('[data-codex]'); if (d) openHistory(d.dataset.codex); });
 function renderFleet(accounts){
   const el = $('#fleet');
   const f = fleetFor(accounts);
@@ -731,7 +775,7 @@ function render(){
   $('#empty').style.display = has ? 'none' : 'block';
   $('#acct-count').textContent = has ? `${accounts.length} account${accounts.length===1?'':'s'}` : '';
   $('#density').style.display = has ? '' : 'none';
-  if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); renderFleet(accounts); buildSummary(accounts); }
+  if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); renderFleet(accounts); renderCodex(); buildSummary(accounts); }
   else { $('#fleet').style.display = 'none'; $('#summary').style.display = 'none'; }
   updateFreshness();
   renderSortUi();
@@ -818,7 +862,9 @@ function demoData(){
       { id:'d12', label:'dev@example.com',      tier:'Max 5x',  usage:{ session:win(11,100), weekly:win(70,5000), weeklyModels:[mdl('Fable',7,5000)], overage:null } },
     );
   }
-  return { generatedAt: new Date(now).toISOString(), accounts };
+  const codex = [{ id: 'codex:demo', provider: 'codex', label: 'Codex · you@example.com', email: 'you@example.com', tier: 'Codex Pro',
+    usage: { session: win(34, 140), weekly: win(41, 4200), weeklyModels: [], overage: null, credits: { balance: 12840, unlimited: false, hasCredits: true } } }];
+  return { generatedAt: new Date(now).toISOString(), accounts, codex };
 }
 
 async function load(){
@@ -937,7 +983,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && histStat
 window.addEventListener('resize', () => { if (histState?.records) drawHistChart(); });
 
 function openHistory(id){
-  const a = (latest?.accounts || []).find((x) => x.id === id);
+  const a = [...(latest?.accounts || []), ...codexEntries()].find((x) => x.id === id);
   if (!a) return;
   let range = parseRange();
   try { range = parseRange(localStorage.getItem(HIST_KEY)); } catch {}
@@ -955,7 +1001,7 @@ function openHistory(id){
 function openFleetHistory(){
   let range = parseRange();
   try { range = parseRange(localStorage.getItem(HIST_KEY)); } catch {}
-  const n = (latest?.accounts || []).length;
+  const n = (latest?.accounts || []).length + codexEntries().length;
   histState = { kind: 'fleet', label: 'Fleet capacity', range, records: null, summary: null, intervalMs: 300000, seq: 0, opener: document.activeElement };
   $('#hist-title').textContent = 'Fleet capacity';
   $('#hist-sub').textContent = n ? `${n} account${n === 1 ? '' : 's'}, plan-weighted` : '';
@@ -1065,7 +1111,7 @@ function renderHistory(){
   const r = RANGES[s.range];
   const every = r.step ? `one sample per ${r.step.replace('m', ' min').replace('h', ' h')}` : `a sample every ${Math.round(s.intervalMs / MINUTE)} min`;
   const dom = histDomain(s);
-  $('#hist-note').textContent = `${every} · gaps = engine off or account unavailable${dom.clipped ? ` · history starts ${fmtDay(new Date(dom.from).toISOString())}` : ''}`;
+  $('#hist-note').textContent = `${every} · gaps = engine off or account unavailable${dom.clipped ? ` · history starts ${fmtDay(new Date(dom.first).toISOString())}` : ''}`;
   drawHistChart();
 }
 
@@ -1079,11 +1125,15 @@ function tickLabel(t, step){
 
 // The chart's time domain: the range, but starting where the log starts when
 // the range reaches further back than the history does (a fresh install).
+// Only when the log covers a fair part of the range (a quarter or more): a
+// brand-new history (minutes old) keeps the full range so the axis reads.
+// `late` says the history starts well inside the range either way.
 function histDomain(s){
-  const until = Date.now(), want = until - RANGES[s.range].ms;
+  const r = RANGES[s.range].ms, until = Date.now(), want = until - r;
   const first = s.records?.length ? Date.parse(s.records[0].ts) : want;
-  const from = first - want > RANGES[s.range].ms * 0.1 ? first : want;
-  return { from, until, clipped: from !== want };
+  const late = first - want > r * 0.1;
+  const from = late && until - first >= r * 0.25 ? first : want;
+  return { from, until, clipped: late, first };
 }
 
 function drawHistChart(){
@@ -1179,7 +1229,7 @@ function renderFleetHistory(){
   $('#hist-stats').innerHTML = tiles.map(([l, v, t]) => `<div class="st" title="${esc(t)}"><div class="sl">${esc(l)}</div><div class="sv">${v}</div></div>`).join('');
   const step = { '15m': '15 min', '1h': 'hour', '3h': '3 h' }[new URLSearchParams(fleetQuery(s.range)).get('step')];
   const dom = histDomain(s);
-  $('#hist-note').textContent = `${step ? `one point per ${step}` : `a point every ${Math.round(s.intervalMs / MINUTE)} min`} · same math as the fleet bar: plan-weighted, an account counts its binding window${dom.clipped ? ` · history starts ${fmtDay(new Date(dom.from).toISOString())}` : ''}`;
+  $('#hist-note').textContent = `${step ? `one point per ${step}` : `a point every ${Math.round(s.intervalMs / MINUTE)} min`} · same math as the fleet bar: plan-weighted, an account counts its binding window${dom.clipped ? ` · history starts ${fmtDay(new Date(dom.first).toISOString())}` : ''}`;
   drawFleetChart();
   renderFleetExtra();
 }
@@ -1190,7 +1240,7 @@ const max20x = (units) => { const v = units / 7; return v >= 1 || v === 0 ? v.to
 // Accounts whose weekly window resets within 48 h with capacity left: what
 // will expire unused unless work moves there. From the live board numbers.
 function expiringSoon(){
-  const now = Date.now(), accts = latest?.accounts || [];
+  const now = Date.now(), accts = [...(latest?.accounts || []), ...codexEntries()];
   const W = fleetFor(accts).weightTotal || 0;
   return accts.map((a) => {
     const w = a.usage?.weekly, at = Date.parse(w?.resetsAt || '');

@@ -36,6 +36,7 @@ test('series are weekly, session, then the first model; extra models are reporte
   assert.equal(series[2].value(recs[1]), 4);
   assert.deepEqual(omitted, ['Opus']);
   assert.deepEqual(seriesFor([rec(0, 1, 2)]).series.map((s) => s.key), ['weekly', 'session']);
+  assert.deepEqual(seriesFor([rec(0, null, 2)]).series.map((s) => s.key), ['weekly'], 'no session window (Codex)');
 });
 
 test('segments break at missing values and at gaps, and clamp to 0..100', () => {

@@ -10,6 +10,7 @@ Personal tool: a tailnet-private dashboard that aggregates Claude Code **session
 - `src/usage.mjs` — fetch/normalize `GET /api/oauth/usage`; fetch profile for labels
 - `src/server.mjs` — `node:http` server + JSON API; `ensureFresh` refresh-on-demand
 - `src/fleet.mjs` — fleet bar math (weights, binding window, relief events, pace); `FLEET_MODELS` names the models whose per-model weekly limits count (Opus)
+- `src/codex.mjs` — Codex (ChatGPT plan) usage via `codex app-server` JSON-RPC (`account/read`, `account/rateLimits/read`); shaped like an account entry, served as `codex` in `/api/usage` (never in `accounts`, which other tools read as the Claude seats), logged to history, counted in the fleet (`Codex Pro` weight 7 in `src/fleet.mjs`); `macos/App/CodexPanel.swift` / `renderCodex` in the page draw it
 - `src/board.mjs` — board order: headroom default + click-to-sort columns; mirrored in `macos/App/BoardSort.swift`
 - `src/usage-chart.mjs` — account usage-over-time chart math (ranges, series, gap splitting, time ticks); served as `/usage-chart.mjs` to the page's chart and mirrored in `macos/App/HistorySheet.swift` (Swift Charts)
 - `weeklyResets` (src/history.mjs) finds weekly rollovers (resetsAt jumps > 1 h) and the unused share of each ended week; served in `/api/history/fleet` as `resets` and drawn as the fleet view's expired-unused panel and tables

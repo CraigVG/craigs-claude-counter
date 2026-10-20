@@ -482,3 +482,22 @@ test('/api/usage carries each account\'s login due date, also on needs_relogin r
     assert.equal(JSON.stringify(body).includes('RT2'), false);
   } finally { await close(); }
 });
+
+test('/api/usage serves Codex separately from accounts and counts it in the fleet', async () => {
+  const credstore = memStore([{ id: 'a', label: 'a@x', tier: 'Pro', accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600_000 }]);
+  const usage = { fetchUsage: async () => ({ session: { pct: 0, severity: 'normal' }, weekly: { pct: 100, severity: 'critical', resetsAt: null } }) };
+  const codexEntry = { id: 'codex:x', provider: 'codex', label: 'Codex · c@x', tier: 'Codex Pro', usage: { session: null, weekly: { pct: 0, resetsAt: null }, weeklyModels: [] } };
+  const { base, close } = await boot({ credstore, usage, oauth: {}, codex: { get: async () => [codexEntry] } });
+  try {
+    const body = await (await fetch(base + '/api/usage')).json();
+    assert.equal(body.accounts.length, 1, 'Codex is not in accounts');
+    assert.equal(body.codex[0].id, 'codex:x');
+    assert.equal(body.fleet.weightTotal, 8);   // Pro 1 + Codex Pro 7
+    assert.equal(body.fleet.accounts.total, 2);
+  } finally { await close(); }
+});
+
+test('createServer starts with Codex enabled (the source is built after its settings)', async () => {
+  const { server } = createServer({ config: { ...baseConfig, codexEnabled: true }, credstore: memStore(), usage: {}, oauth: {} });
+  assert.ok(server);
+});

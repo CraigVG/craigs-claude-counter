@@ -42,8 +42,12 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // ranges near 1.7x), Max 5x = 3.5 x Pro (published 140-280 vs 40-80
 // Sonnet-hours a week). Team seats carry the limiter's own bucket class in
 // their label ("Team 5x") and are weighted like that class. Unknown plans are
-// weighted as the 5x class and flagged. These are the weights the bar uses.
-export const DEFAULT_WEIGHTS = { 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Max: 3.5, Pro: 1, unknown: 3.5 };
+// weighted as the 5x class and flagged. Codex (ChatGPT) plans join the fleet
+// too: a Codex Pro week counts like a Max 20x week (both the $200 tier; Craig,
+// 2026-10-20), Plus like Claude Pro. `codex` in the weights, when set
+// (CLAUDE_USAGE_CODEX_WEIGHT), overrides every Codex plan. These are the
+// weights the bar uses.
+export const DEFAULT_WEIGHTS = { 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Max: 3.5, Pro: 1, 'Codex Pro': 7, 'Codex Plus': 1, unknown: 3.5 };
 // The 5-hour session bucket does follow the plan multiplier. Not used for the
 // bar (see the model note above); exported for anyone reasoning about burst rate.
 export const SESSION_WEIGHTS = { 'Max 20x': 20, 'Max 5x': 5, Max: 5, Pro: 1, unknown: 5 };
@@ -60,8 +64,14 @@ const pct1 = (n) => Math.round(n * 10) / 10;
 const ms = (iso) => { const t = iso ? new Date(iso).getTime() : NaN; return Number.isNaN(t) ? null : t; };
 
 export function tierWeight(tier, weights = DEFAULT_WEIGHTS) {
-  if (tier && weights[tier] != null) return { weight: weights[tier], assumed: false };
   const t = String(tier || '').toLowerCase();
+  // Codex first: "Codex Pro" must not fall through to Claude Pro's weight.
+  if (/codex/.test(t)) {
+    if (weights.codex != null) return { weight: weights.codex, assumed: false };
+    if (weights[tier] != null) return { weight: weights[tier], assumed: false };
+    return { weight: DEFAULT_WEIGHTS[tier] ?? 7, assumed: DEFAULT_WEIGHTS[tier] == null };
+  }
+  if (tier && weights[tier] != null) return { weight: weights[tier], assumed: false };
   if (/20x/.test(t)) return { weight: weights['Max 20x'] ?? 7, assumed: false };
   if (/5x/.test(t)) return { weight: weights['Max 5x'] ?? 3.5, assumed: false };
   if (/max/.test(t)) return { weight: weights.Max ?? 3.5, assumed: false };

@@ -96,6 +96,11 @@ export function loadConfig(env = process.env) {
     // Most upstream usage calls in flight at once (restarts and cold caches
     // otherwise fire one per account in a single burst).
     upstreamConcurrency: Number(env.CLAUDE_USAGE_CONCURRENCY || 3),
+    // Codex (ChatGPT plan) usage through the local Codex CLI; 0 turns it off.
+    // CODEX_HOME picks the Codex login (default ~/.codex). The weight sets how
+    // much a Codex week counts in the fleet bar (default: Pro = 7, like Max 20x).
+    codexEnabled: env.CLAUDE_USAGE_CODEX !== '0',
+    codexWeight: env.CLAUDE_USAGE_CODEX_WEIGHT ? Number(env.CLAUDE_USAGE_CODEX_WEIGHT) : null,
     // Circuit breaker: after a 429 from upstream, stop calling it for this
     // account for this long (serving last-known data), doubling on each
     // further 429 up to 15 min, with jitter. Prevents an open tab from

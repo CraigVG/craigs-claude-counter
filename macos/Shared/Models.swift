@@ -6,7 +6,9 @@ import SwiftUI
 struct UsageSnapshot: Decodable {
     var generatedAt: String?
     var accounts: [AccountDTO]
-    /// Every account folded into one capacity-weighted picture (engine: src/fleet.mjs).
+    /// Codex (ChatGPT plan) usage, served apart from the Claude accounts (engine: src/codex.mjs).
+    var codex: [AccountDTO]? = nil
+    /// Every account, Codex included, folded into one capacity-weighted picture (engine: src/fleet.mjs).
     var fleet: FleetDTO?
 }
 
@@ -77,6 +79,9 @@ struct AccountDTO: Decodable, Identifiable {
     var message: String?
     var stale: Bool?
     var status: Int?
+    var email: String? = nil
+    /// "codex" for the Codex entry; nil for Claude accounts.
+    var provider: String? = nil
 
     var name: String { label ?? id }
     var isRelogin: Bool { error == "needs_relogin" }
@@ -108,6 +113,14 @@ struct UsageDTO: Decodable {
     var overage: OverageDTO?
     /// Banked limit resets (one-off grants that refill limits when used from Claude Code).
     var bankedResets: BankedResetsDTO? = nil
+    /// Codex only: the credits balance, and why usage is blocked when it is.
+    var credits: CreditsDTO? = nil
+    var limitReached: String? = nil
+}
+
+struct CreditsDTO: Decodable {
+    var balance: Double?
+    var unlimited: Bool?
 }
 
 struct BankedResetsDTO: Decodable {

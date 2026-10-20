@@ -17,7 +17,7 @@ struct BoardLayout {
     var metric: CGFloat { compact ? 200 : 150 }
     var model: CGFloat { compact ? 104 : 96 }
     var over: CGFloat { compact ? 170 : 150 }
-    var action: CGFloat { compact ? 64 : 78 }
+    var action: CGFloat { compact ? 96 : 106 }   // fits the Re-login pill and ✕ side by side
     var gap: CGFloat { compact ? 12 : 18 }
     var rowVPad: CGFloat { compact ? 6 : 15 }
     var tickHeight: CGFloat { compact ? 22 : 46 }
@@ -27,7 +27,7 @@ struct BoardLayout {
     /// decide `auto` density. Chrome (244) = outer padding, header, summary
     /// strip, board header, legend and the spacing between them. A comfortable
     /// row is the stacked metric cell (~60pt) + 30pt padding + divider.
-    static func comfortableHeight(rows: Int, fleet: Bool = false) -> CGFloat { 244 + (fleet ? 132 : 0) + CGFloat(rows) * 91 }
+    static func comfortableHeight(rows: Int, fleet: Bool = false, codex: Int = 0) -> CGFloat { 244 + (fleet ? 132 : 0) + CGFloat(codex) * 84 + CGFloat(rows) * 91 }
 }
 
 struct DashboardView: View {
@@ -45,6 +45,9 @@ struct DashboardView: View {
 
     private var density: Density { Density(rawValue: densityRaw) ?? .auto }
 
+    /// Codex entries (shown in their own panel, counted in the fleet).
+    private var codex: [AccountDTO] { model.snapshot?.codex ?? [] }
+
     /// The fleet picture, when the engine could count at least one account.
     private var fleet: FleetDTO? {
         guard let f = model.snapshot?.fleet, f.usedPct != nil else { return nil }
@@ -55,7 +58,7 @@ struct DashboardView: View {
         switch density {
         case .compact: return true
         case .comfortable: return false
-        case .auto: return BoardLayout.comfortableHeight(rows: accounts.count, fleet: fleet != nil) > height
+        case .auto: return BoardLayout.comfortableHeight(rows: accounts.count, fleet: fleet != nil, codex: codex.count) > height
         }
     }
 
@@ -74,6 +77,9 @@ struct DashboardView: View {
                     } else {
                         if let f = fleet {
                             FleetBar(fleet: f, compact: compact, narrow: narrow, onOpen: { model.openFleetHistory() })
+                        }
+                        if !codex.isEmpty {
+                            CodexPanel(entries: codex, compact: compact, narrow: narrow, onOpen: { model.openHistory($0) })
                         }
                         SummaryStrip(accounts: accounts, compact: compact)
                         ScrollView(showsIndicators: false) {
@@ -97,7 +103,7 @@ struct DashboardView: View {
             case .history(let a):
                 HistorySheet(model: model, account: a)
             case .fleetHistory:
-                FleetHistorySheet(model: model, accounts: model.snapshot?.accounts ?? [])
+                FleetHistorySheet(model: model, accounts: (model.snapshot?.accounts ?? []) + codex)
             }
         }
     }
@@ -360,7 +366,9 @@ struct AccountRowView: View {
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if a.isRelogin {
-                Button(action: onRelogin) { Text("Re-login").font(Theme.ui(11.5, .medium)) }
+                // fixedSize: the column is narrower than the pill plus ✕, and a
+                // squeezed label wrapped one letter per line.
+                Button(action: onRelogin) { Text("Re-login").font(Theme.ui(11.5, .medium)).lineLimit(1).fixedSize() }
                     .buttonStyle(PillButton(color: Theme.alarm))
             }
             if hover || a.isRelogin {
