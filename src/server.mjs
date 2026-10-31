@@ -77,6 +77,10 @@ export async function ensureFresh(account, { oauth, credstore, now = Date.now(),
 // When `usage` is given, also re-reads each account's plan tier from the
 // profile endpoint once per `tierEveryMs` (default daily), so a plan change or
 // a label fix lands without a re-login. Token refresh is never skipped for it.
+// Bump when prettyTier's mapping changes, so stored plan labels are re-read at
+// the next tick instead of waiting out the daily check (2: Ultra / Max rename).
+export const TIER_RULES = 2;
+
 export function startBackgroundRefresh({ credstore, oauth, usage, locks, intervalMs = 30 * 60_000, refreshWithinMs = 60 * 60_000, tierEveryMs = 24 * 60 * 60_000, log = () => {} }) {
   const tick = async () => {
     let accounts = [];
@@ -92,13 +96,13 @@ export function startBackgroundRefresh({ credstore, oauth, usage, locks, interva
         }
         catch (e) { log(`refresh failed for ${a.label}: ${e.needsRelogin ? 'needs re-login' : (e.message || e)}`); continue; }
       }
-      if (!usage || !a.accessToken || (a.tierCheckedAt && now - a.tierCheckedAt < tierEveryMs)) continue;
+      if (!usage || !a.accessToken || (a.tierCheckedAt && a.tierRules === TIER_RULES && now - a.tierCheckedAt < tierEveryMs)) continue;
       try {
         const profile = await usage.fetchProfile(a.accessToken);
         const latest = await credstore.getAccount(a.id); // refreshed tokens may have landed meanwhile
         if (!latest) continue;
         if (profile.tier && profile.tier !== latest.tier) log(`${a.label} plan is now ${profile.tier} (was ${latest.tier || 'unknown'})`);
-        await credstore.putAccount({ ...latest, tier: profile.tier || latest.tier || null, tierCheckedAt: now });
+        await credstore.putAccount({ ...latest, tier: profile.tier || latest.tier || null, tierCheckedAt: now, tierRules: TIER_RULES });
       } catch (e) { log(`plan check failed for ${a.label}: ${e.message || e}`); }
     }
   };

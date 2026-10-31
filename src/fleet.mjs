@@ -44,10 +44,12 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // their label ("Team 5x") and are weighted like that class. Unknown plans are
 // weighted as the 5x class and flagged. Codex (ChatGPT) plans join the fleet
 // too: a Codex Pro week counts like a Max 20x week (both the $200 tier; Craig,
-// 2026-10-20), Plus like Claude Pro. `codex` in the weights, when set
+// 2026-10-20), Plus like Claude Pro. Ultra is Max 20x renamed (2026-10-30:
+// same price and weekly limit, no session limit), so it weighs the same.
+// `codex` in the weights, when set
 // (CLAUDE_USAGE_CODEX_WEIGHT), overrides every Codex plan. These are the
 // weights the bar uses.
-export const DEFAULT_WEIGHTS = { 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Max: 3.5, Pro: 1, 'Codex Pro': 7, 'Codex Plus': 1, unknown: 3.5 };
+export const DEFAULT_WEIGHTS = { Ultra: 7, 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Max: 3.5, Pro: 1, 'Codex Pro': 7, 'Codex Plus': 1, unknown: 3.5 };
 // The 5-hour session bucket does follow the plan multiplier. Not used for the
 // bar (see the model note above); exported for anyone reasoning about burst rate.
 export const SESSION_WEIGHTS = { 'Max 20x': 20, 'Max 5x': 5, Max: 5, Pro: 1, unknown: 5 };
@@ -72,7 +74,7 @@ export function tierWeight(tier, weights = DEFAULT_WEIGHTS) {
     return { weight: DEFAULT_WEIGHTS[tier] ?? 7, assumed: DEFAULT_WEIGHTS[tier] == null };
   }
   if (tier && weights[tier] != null) return { weight: weights[tier], assumed: false };
-  if (/20x/.test(t)) return { weight: weights['Max 20x'] ?? 7, assumed: false };
+  if (/20x|ultra/.test(t)) return { weight: weights.Ultra ?? weights['Max 20x'] ?? 7, assumed: false };
   if (/5x/.test(t)) return { weight: weights['Max 5x'] ?? 3.5, assumed: false };
   if (/max/.test(t)) return { weight: weights.Max ?? 3.5, assumed: false };
   if (/team/.test(t)) return { weight: weights.unknown ?? 3.5, assumed: true }; // Team seat with no multiplier in the label

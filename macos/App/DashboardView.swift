@@ -304,7 +304,7 @@ struct AccountRowView: View {
             Rectangle().fill(tickColor).frame(width: layout.tick, height: layout.tickHeight)
             account.frame(maxWidth: .infinity, alignment: .leading)
             plan.frame(width: layout.plan, alignment: .leading)
-            MetricCell(w: a.usage?.session, kind: .session, dim: a.isRelogin, compact: compact).frame(width: layout.metric, alignment: .leading)
+            MetricCell(w: a.usage?.session, kind: .session, dim: a.isRelogin, compact: compact, noLimit: a.usage?.sessionLimit == false).frame(width: layout.metric, alignment: .leading)
             MetricCell(w: a.usage?.weekly, kind: .weekly, dim: a.isRelogin, compact: compact).frame(width: layout.metric, alignment: .leading)
             ModelCell(usage: a.usage, compact: compact).frame(width: layout.model, alignment: .leading)
             OverageCell(usage: a.usage, compact: compact).frame(width: layout.over, alignment: .leading)
@@ -388,6 +388,8 @@ struct MetricCell: View {
     let kind: MetricKind
     var dim: Bool = false
     var compact: Bool = false
+    /// The plan has no limit of this kind (no 5h session limit on verified Ultra).
+    var noLimit: Bool = false
 
     private var pct: Double? { w?.pct }
     private var sev: Severity { Severity.of(pct) }
@@ -399,7 +401,7 @@ struct MetricCell: View {
         } else if pct != nil {
             Text(TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt))
         } else {
-            Text(kind == .session ? "no active session" : "no data")
+            Text(noLimit ? "no 5h limit" : kind == .session ? "no active session" : "no data")
         }
     }
     private var resetColor: Color {
@@ -651,7 +653,7 @@ struct FleetBar: View {
     }
 
     private var fleetTitle: String {
-        "Weighted by weekly capacity: Max 20x = 2× the 5x class (Max 5x, Team 5x), 5x = 3.5× Pro. Session limits act as throttles, not share."
+        "Weighted by weekly capacity: Ultra (was Max 20x) = 2× the 5x class (Max 5x, Team 5x), 5x = 3.5× Pro. Session limits act as throttles, not share."
     }
 
     private var legend: some View {

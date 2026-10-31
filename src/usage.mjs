@@ -2,7 +2,10 @@
 import { USAGE_RESETS_URL, PROFILE_URL, ANTHROPIC_BETA, USER_AGENT, CLI_USER_AGENT } from './config.mjs';
 
 // Map an Anthropic rate_limit_tier to a short, friendly plan name.
-export function prettyTier(rateLimitTier, orgType) {
+// Personal plans prefer the profile's plan_display_name: since 2026-10-30 the
+// $200 plan is "Ultra" (was Max 20x) and the $100 plan is "Max" (was Max 5x),
+// while rate_limit_tier still reads default_claude_max_20x / _5x.
+export function prettyTier(rateLimitTier, orgType, planDisplayName) {
   const t = String(rateLimitTier || '');
   // Team seats report a Max-style rate_limit_tier (e.g. default_claude_max_5x):
   // that is the bucket class the limiter applies, but the plan is Team, so say so.
@@ -10,6 +13,7 @@ export function prettyTier(rateLimitTier, orgType) {
     const m = t.match(/max_(\d+x)/);
     return m ? `Team ${m[1]}` : 'Team';
   }
+  if (planDisplayName) return String(planDisplayName);
   if (/max_20x/.test(t)) return 'Max 20x';
   if (/max_5x/.test(t)) return 'Max 5x';
   if (/max/.test(t)) return 'Max';
@@ -172,7 +176,13 @@ export function normalizeUsage(raw, thresholds = { warnPct: 70, critPct: 90 }) {
     };
   }
 
-  return { session, weekly, weeklyModels, weeklyOpus, weeklySonnet, overage, bankedResets: bankedResetsFrom(raw) };
+  // Verified Ultra accounts have no 5-hour session limit (2026-10-30): the API
+  // then reports no session window at all (five_hour null, no `session` row),
+  // which is what Claude Code's /usage reads to hide "Current session". Say so
+  // explicitly, so clients can tell "no limit" from "no data".
+  const sessionLimit = session ? true : (weekly ? false : null);
+
+  return { session, sessionLimit, weekly, weeklyModels, weeklyOpus, weeklySonnet, overage, bankedResets: bankedResetsFrom(raw) };
 }
 
 // What a non-OK response says about rate limiting: Retry-After (seconds or an
@@ -238,7 +248,7 @@ export async function fetchProfile(accessToken, { fetchImpl = fetch } = {}) {
   return {
     email: acct.email || null,
     displayName: acct.display_name || acct.full_name || null,
-    tier: prettyTier(org.rate_limit_tier, org.organization_type),
+    tier: prettyTier(org.rate_limit_tier, org.organization_type, org.plan_display_name),
     rateLimitTier: org.rate_limit_tier || null,
     extraUsageEnabled: !!org.has_extra_usage_enabled,
   };

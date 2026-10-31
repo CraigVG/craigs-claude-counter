@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, ensureFresh, startBackgroundRefresh, loginInfo, DEFAULT_LOGIN_LIFE_MS, makeGate } from '../src/server.mjs';
+import { createServer, ensureFresh, startBackgroundRefresh, loginInfo, DEFAULT_LOGIN_LIFE_MS, makeGate, TIER_RULES } from '../src/server.mjs';
 import { OAUTH } from '../src/config.mjs';
 
 function memStore(seed = []) {
@@ -295,7 +295,7 @@ test('background refresh keeps near-expiry accounts alive, skips fresh ones', as
 test('background refresh re-reads the plan tier daily when usage is provided', async () => {
   const credstore = memStore([
     { id: 'team', label: 'team', tier: 'Max 5x', accessToken: 'AT', refreshToken: 'R', expiresAt: Date.now() + 10 * 3600_000 },
-    { id: 'seen', label: 'seen', tier: 'Max 20x', accessToken: 'AT2', refreshToken: 'R2', expiresAt: Date.now() + 10 * 3600_000, tierCheckedAt: Date.now() - 1000 },
+    { id: 'seen', label: 'seen', tier: 'Max 20x', accessToken: 'AT2', refreshToken: 'R2', expiresAt: Date.now() + 10 * 3600_000, tierCheckedAt: Date.now() - 1000, tierRules: TIER_RULES },
   ]);
   const looked = [];
   const usage = { fetchProfile: async (tok) => { looked.push(tok); return { email: 'x', tier: 'Team 5x' }; } };
@@ -309,6 +309,20 @@ test('background refresh re-reads the plan tier daily when usage is provided', a
   assert.ok(team.tierCheckedAt > 0);
   assert.equal(team.accessToken, 'AT'); // tokens untouched
   assert.equal((await credstore.getAccount('seen')).tier, 'Max 20x');
+});
+
+test('background refresh re-reads a plan checked under older tier rules', async () => {
+  const credstore = memStore([
+    { id: 'old', label: 'old', tier: 'Max 20x', accessToken: 'AT', refreshToken: 'R', expiresAt: Date.now() + 10 * 3600_000, tierCheckedAt: Date.now() - 1000 },
+  ]);
+  const usage = { fetchProfile: async () => ({ email: 'x', tier: 'Ultra' }) };
+  const oauth = { refresh: async () => { throw new Error('should not refresh'); } };
+  const stop = startBackgroundRefresh({ credstore, oauth, usage, locks: new Map(), intervalMs: 9_999_999, refreshWithinMs: 60_000 });
+  await new Promise((r) => setTimeout(r, 40));
+  stop();
+  const a = await credstore.getAccount('old');
+  assert.equal(a.tier, 'Ultra');
+  assert.equal(a.tierRules, TIER_RULES);
 });
 
 test('GET / serves the dashboard html', async () => {

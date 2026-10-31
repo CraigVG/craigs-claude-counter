@@ -11,6 +11,7 @@ const acct = (label, tier, session, weekly, weeklyModels = []) => ({ id: label, 
 test('tierWeight maps plans and flags unknown tiers as assumed', () => {
   // Weekly capacity: a 20x week is 2x a 5x week, not 4x (the 4x is the session bucket).
   assert.deepEqual(tierWeight('Max 20x'), { weight: 7, assumed: false });
+  assert.deepEqual(tierWeight('Ultra'), { weight: 7, assumed: false });
   assert.deepEqual(tierWeight('Max 5x'), { weight: 3.5, assumed: false });
   assert.deepEqual(tierWeight('Pro'), { weight: 1, assumed: false });
   assert.deepEqual(tierWeight('max_20x_raven'), { weight: 7, assumed: false });

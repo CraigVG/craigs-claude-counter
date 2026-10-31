@@ -524,10 +524,10 @@ function renderSortUi(){
 }
 document.querySelectorAll('.head .sort').forEach(b => b.onclick = () => setSort(nextSort(sort, b.dataset.sort)));
 
-function metricCell(w, kind){
+function metricCell(w, kind, noLimit = false){
   const lbl = `<span class="clabel">${kind === 'session' ? 'Session &middot; 5h' : 'Weekly'}</span>`;
   if(!w || w.pct == null){
-    const label = kind === 'session' ? 'no active session' : 'no data';
+    const label = noLimit ? 'no 5h limit' : kind === 'session' ? 'no active session' : 'no data';
     return `<div class="metric">${lbl}<div class="pct is-idle">&mdash;</div><div class="meter is-idle"><i style="width:2%"></i></div><span class="reset muted">${label}</span></div>`;
   }
   const sev = sevOf(w.pct), cls = sevCls(sev);
@@ -621,7 +621,7 @@ function rowFor(a){
       ${tags.length ? `<span class="tags">${tags.join('')}</span>` : ''}
     </div>
     <div class="plan">${a.tier ? `<span class="pill">${esc(a.tier)}</span>` : '<span class="pill" style="color:var(--ink-4)">—</span>'}</div>
-    <div>${metricCell(session, 'session')}</div>
+    <div>${metricCell(session, 'session', !!u && u.sessionLimit === false)}</div>
     <div>${metricCell(weekly, 'weekly')}</div>
     <div>${modelCell(u)}</div>
     <div>${overageCell(u)}</div>
@@ -688,7 +688,7 @@ function renderFleet(accounts){
   }
   if(f.accounts.unknown) legend.push(`<span class="k">${f.accounts.unknown} not counted (no data)</span>`);
   if(f.accounts.weightsAssumed) legend.push(`<span class="k">${f.accounts.weightsAssumed} plan${f.accounts.weightsAssumed===1?'':'s'} unknown, weighted as the 5x class</span>`);
-  legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Max 20x = 2x the 5x class (Max 5x and Team 5x seats), 5x = 3.5x Pro. Session limits act as throttles, not share. Each account counts its session and all-models weekly limit; per-model weekly limits (Fable) cap only that model, so they count only for Opus, the model the fleet runs on.">weighted by weekly capacity</span>`);
+  legend.push(`<span class="k" title="The bar is denominated in weekly capacity: Ultra (was Max 20x) = 2x the 5x class (Max 5x and Team 5x seats), 5x = 3.5x Pro. Session limits act as throttles, not share. Each account counts its session and all-models weekly limit; per-model weekly limits (Fable) cap only that model, so they count only for Opus, the model the fleet runs on.">weighted by weekly capacity</span>`);
 
   // Pace: weighted weekly usage vs the elapsed share of each window. The tick
   // on the bar is where usage would sit if the fleet were exactly on pace.

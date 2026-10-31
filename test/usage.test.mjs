@@ -95,6 +95,27 @@ test('computed severity used when API omits it', () => {
   assert.equal(u.session.severity, 'critical');
 });
 
+test('prettyTier prefers plan_display_name for personal plans (Ultra rename)', () => {
+  assert.equal(prettyTier('default_claude_max_20x', 'claude_max', 'Ultra'), 'Ultra');
+  assert.equal(prettyTier('default_claude_max_5x', 'claude_max', 'Max'), 'Max');
+  assert.equal(prettyTier('default_claude_max_5x', 'claude_team', 'Ultra'), 'Team 5x');
+  assert.equal(prettyTier('default_claude_max_20x', 'claude_max', null), 'Max 20x');
+});
+
+test('normalizeUsage flags a plan with no session limit', () => {
+  const noSession = {
+    five_hour: null,
+    seven_day: { utilization: 55, resets_at: '2026-11-02T21:00:00+00:00' },
+    limits: [{ kind: 'weekly_all', group: 'weekly', percent: 55, severity: 'normal', resets_at: '2026-11-02T21:00:00+00:00', scope: null, is_active: true }],
+  };
+  const u = normalizeUsage(noSession);
+  assert.equal(u.session, null);
+  assert.equal(u.sessionLimit, false);
+  assert.equal(u.weekly.pct, 55);
+  assert.equal(normalizeUsage(SAMPLE).sessionLimit, true);
+  assert.equal(normalizeUsage({}).sessionLimit, null);
+});
+
 test('prettyTier maps rate_limit_tier', () => {
   assert.equal(prettyTier('default_claude_max_20x'), 'Max 20x');
   assert.equal(prettyTier('default_claude_max_5x'), 'Max 5x');
@@ -114,12 +135,12 @@ test('fetchProfile returns email + friendly tier', async () => {
     ok: true,
     json: async () => ({
       account: { email: 'a@b.com', display_name: 'A', full_name: 'A B' },
-      organization: { rate_limit_tier: 'default_claude_max_20x', organization_type: 'claude_max', has_extra_usage_enabled: true },
+      organization: { rate_limit_tier: 'default_claude_max_20x', organization_type: 'claude_max', plan_display_name: 'Ultra', has_extra_usage_enabled: true },
     }),
   });
   const p = await fetchProfile('tok', { fetchImpl });
   assert.equal(p.email, 'a@b.com');
-  assert.equal(p.tier, 'Max 20x');
+  assert.equal(p.tier, 'Ultra');
   assert.equal(p.extraUsageEnabled, true);
 });
 
@@ -182,7 +203,9 @@ test('bankedResetsFrom is null when the block is absent; ineligible reads as emp
 
 test('fetchUsage asks for banked resets as the Claude Code CLI', async () => {
   let seen;
-  const fetchImpl = async (url, init) => { seen = { url, ua: init.headers['User-Agent'] }; return { ok: true, json: async () => ({ ...SAMPLE, cedar_ember: CEDAR_EMBER }) }; };
+  // fetchUsage drops expired grants against the real clock, so the fixture's grant must outlive it.
+  const live = { ...CEDAR_EMBER, grants: CEDAR_EMBER.grants.map((g) => ({ ...g, ends_at: '2099-01-01T00:00:00+00:00' })) };
+  const fetchImpl = async (url, init) => { seen = { url, ua: init.headers['User-Agent'] }; return { ok: true, json: async () => ({ ...SAMPLE, cedar_ember: live }) }; };
   const u = await fetchUsage('tok', { fetchImpl });
   assert.equal(seen.url, USAGE_RESETS_URL);
   assert.match(seen.url, /[?&]cedar_ember=1\b/);

@@ -31,7 +31,7 @@ struct AccountCard: View {
                 Spacer()
                 actions
             }
-            cardMetric("Session · 5h", a.usage?.session, .session)
+            cardMetric("Session · 5h", a.usage?.session, .session, noLimit: a.usage?.sessionLimit == false)
             cardMetric("Weekly", a.usage?.weekly, .weekly)
             if hasExtras {
                 HStack(alignment: .top) {
@@ -72,7 +72,7 @@ struct AccountCard: View {
         }
     }
 
-    private func cardMetric(_ label: String, _ w: WindowDTO?, _ kind: MetricKind) -> some View {
+    private func cardMetric(_ label: String, _ w: WindowDTO?, _ kind: MetricKind, noLimit: Bool = false) -> some View {
         let pct = w?.pct
         let sev = Severity.of(pct)
         return VStack(alignment: .leading, spacing: 6) {
@@ -92,6 +92,8 @@ struct AccountCard: View {
             Group {
                 if (pct ?? 0) > 0 {
                     Countdown(target: TimeFmt.parse(w?.resetsAt)) { now in Text(TimeFmt.resetText(w?.resetsAt, now: now)) }
+                } else if pct == nil && noLimit {
+                    Text("no 5h limit")
                 } else {
                     Text(TimeFmt.restingText(session: kind == .session, resetsAt: w?.resetsAt))
                 }

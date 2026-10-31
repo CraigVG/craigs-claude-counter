@@ -52,7 +52,7 @@ enum SortColumn: String, CaseIterable {
     /// Weekly capacity relative to Pro, as the fleet weights it (src/fleet.mjs tierWeight).
     static func planWeight(_ tier: String) -> Double {
         let t = tier.lowercased()
-        if t.contains("20x") { return 7 }
+        if t.contains("20x") || t.contains("ultra") { return 7 }
         if t.contains("5x") || t.contains("max") || t.contains("team") { return 3.5 }
         if t.contains("pro") { return 1 }
         return 3.5

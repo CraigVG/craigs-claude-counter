@@ -105,6 +105,9 @@ struct AccountDTO: Decodable, Identifiable {
 
 struct UsageDTO: Decodable {
     var session: WindowDTO?
+    /// false when the plan has no 5-hour session limit (verified Ultra, 2026-10-30);
+    /// nil from engines older than v1.11.0 and when nothing is known.
+    var sessionLimit: Bool? = nil
     var weekly: WindowDTO?
     // Per-model weekly sub-limits, in the order the API reports them. The set of
     // models is not fixed (was Opus/Sonnet, now Fable), so we render whatever
