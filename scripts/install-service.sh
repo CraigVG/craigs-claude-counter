@@ -37,6 +37,9 @@ PLIST
 # where plain load/unload target the wrong bootstrap namespace.
 DOMAIN="gui/$(id -u)"
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+# bootout returns before the old job is gone; bootstrapping too soon fails
+# with "Bootstrap failed: 5: Input/output error" and leaves the engine down.
+for _ in $(seq 1 20); do launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break; sleep 0.5; done
 launchctl enable "$DOMAIN/$LABEL"
 launchctl bootstrap "$DOMAIN" "$PLIST"
 sleep 2
