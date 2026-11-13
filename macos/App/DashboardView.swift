@@ -470,6 +470,12 @@ struct ModelCell: View {
     }
 
     var body: some View {
+        // The model limit is a slice of the week; say how big on hover.
+        let help = (usage?.weeklyModels ?? []).compactMap(\.shareHelp).joined(separator: "\n")
+        content.help(help)
+    }
+
+    @ViewBuilder private var content: some View {
         let rows = models()
         if rows.isEmpty {
             Text("—").font(Theme.mono(12, .regular)).foregroundColor(Theme.ink4)
@@ -513,7 +519,7 @@ struct BankedResetsLine: View {
         if let r = resets, r.left > 0 {
             // Compact rows share the line with the overage figure, so just the count.
             HStack(spacing: 0) {
-                Text(compact ? "↺ \(r.left)" : "↺ \(r.left) reset\(r.left == 1 ? "" : "s")")
+                Text("↺ " + r.countText(long: !compact))
                     .font(Theme.mono(compact ? 11 : 11.5, .semibold)).foregroundColor(Theme.ok)
                 if !compact, let by = r.nextExpiresAt.flatMap(TimeFmt.parse) {
                     Text(" · by \(by.formatted(.dateTime.month(.abbreviated).day()))").font(Theme.mono(11.5, .regular)).foregroundColor(Theme.ink3)
@@ -672,10 +678,10 @@ struct FleetBar: View {
             }
             if let b = fleet.bankedResets, b.left > 0 {
                 HStack(spacing: 4) {
-                    Text("↺ \(b.left)").foregroundColor(Theme.ok).fontWeight(.semibold)
-                    Text("banked reset\(b.left == 1 ? "" : "s")").foregroundColor(Theme.ink3)
+                    Text("↺ " + b.countText(long: true)).foregroundColor(Theme.ok).fontWeight(.semibold)
+                    Text("banked").foregroundColor(Theme.ink3)
                 }
-                .help(b.accounts.map { h in "\(h.account): \(h.left)" + (h.nextExpiresAt.flatMap(BankedResetsDTO.day).map { ", use by \($0)" } ?? "") }.joined(separator: "\n"))
+                .help(b.helpText)
             }
             if fleet.accounts.unknown > 0 {
                 Text("\(fleet.accounts.unknown) not counted (no data)").foregroundColor(Theme.ink3)

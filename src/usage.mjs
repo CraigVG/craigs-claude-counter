@@ -74,19 +74,27 @@ function windowFrom(raw, { limitKind, legacyKey, modelName }, thresholds) {
 // structured limits[] array is absent.
 function weeklyModelsFrom(raw, thresholds) {
   const limits = Array.isArray(raw?.limits) ? raw.limits : [];
+  // weekly_scoped_shares ties a scoped limit (by its index in limits[]) to the
+  // all-models week: Fable may use up to `allowance` % of the week and has used
+  // `used` % of it. Model usage counts in the weekly limit too.
+  const shares = new Map((Array.isArray(raw?.weekly_scoped_shares) ? raw.weekly_scoped_shares : [])
+    .filter((x) => x && Number.isInteger(x.limit_index)).map((x) => [x.limit_index, x]));
   const models = [];
-  for (const l of limits) {
+  limits.forEach((l, i) => {
     const name = l?.scope?.model?.display_name;
     if (l.group === 'weekly' && name) {
+      const sh = shares.get(i);
       models.push({
         name,
         pct: round(l.percent),
         resetsAt: l.resets_at ?? null,
         severity: l.severity ?? severityFor(l.percent, thresholds.warnPct, thresholds.critPct),
         active: l.is_active ?? null,
+        weeklySharePct: sh ? round(sh.used_percent_of_weekly) : null,
+        weeklyAllowancePct: sh ? round(sh.allowance_percent_of_weekly) : null,
       });
     }
-  }
+  });
   if (models.length === 0) {
     for (const [name, legacyKey] of [['Opus', 'seven_day_opus'], ['Sonnet', 'seven_day_sonnet']]) {
       const w = windowFrom(raw, { modelName: name, legacyKey }, thresholds);
@@ -101,30 +109,50 @@ function weeklyModelsFrom(raw, thresholds) {
 // `cedar_ember`; it is null unless asked for (see USAGE_RESETS_URL). Returns
 // null when absent, so "not reported" and "none banked" stay distinguishable.
 // `left` sums every live grant; expired grants are dropped.
+//
+// Since 2026-11 there are two kinds. A week reset clears `seven_day` (the
+// all-models weekly limit, usually with the scoped one). A model reset clears
+// only the per-model weekly limit, which the grants call
+// `seven_day_overage_included` (Fable's); `gives_back_weekly` says it also
+// returns that model's share of the week. `weeklyLeft` / `modelLeft` split
+// `left` by kind, and `modelName` names the model when the payload has
+// exactly one scoped weekly limit.
 export function bankedResetsFrom(raw, now = Date.now()) {
   const ce = raw?.cedar_ember;
   if (!ce || typeof ce !== 'object') return null;
+  const scoped = (Array.isArray(raw?.limits) ? raw.limits : [])
+    .map((l) => l?.scope?.model?.display_name).filter(Boolean);
+  const modelName = scoped.length === 1 ? scoped[0] : null;
   const grants = (Array.isArray(ce.grants) ? ce.grants : [])
     .filter((g) => g && Number.isInteger(g.resets_left))
-    .map((g) => ({
-      id: String(g.id ?? ''),
-      label: g.label || '',
-      left: g.resets_left,
-      total: Number.isInteger(g.resets_total) ? g.resets_total : g.resets_left,
-      startsAt: g.starts_at ?? null,
-      endsAt: g.ends_at ?? null,
-      clears: Array.isArray(g.clears) ? g.clears : [],
-      paused: !!g.paused,
-      usableNow: !!g.usable_now,
-      useRequiresLimit: g.use_requires_limit !== false,
-    }))
+    .map((g) => {
+      const clears = Array.isArray(g.clears) ? g.clears : [];
+      return {
+        id: String(g.id ?? ''),
+        label: g.label || '',
+        left: g.resets_left,
+        total: Number.isInteger(g.resets_total) ? g.resets_total : g.resets_left,
+        startsAt: g.starts_at ?? null,
+        endsAt: g.ends_at ?? null,
+        clears,
+        kind: clears.includes('seven_day') || clears.length === 0 ? 'weekly' : 'model',
+        givesBackWeekly: !!g.gives_back_weekly,
+        paused: !!g.paused,
+        usableNow: !!g.usable_now,
+        useRequiresLimit: g.use_requires_limit !== false,
+      };
+    })
     .filter((g) => !g.endsAt || Date.parse(g.endsAt) > now);
   const live = grants.filter((g) => g.left > 0);
   const ends = live.map((g) => g.endsAt).filter(Boolean).sort();
+  const sum = (list) => list.reduce((n, g) => n + g.left, 0);
   return {
     eligible: !!ce.eligible,
     ineligibleReason: ce.ineligible_reason ?? null,
-    left: live.reduce((n, g) => n + g.left, 0),
+    left: sum(live),
+    weeklyLeft: sum(live.filter((g) => g.kind === 'weekly')),
+    modelLeft: sum(live.filter((g) => g.kind === 'model')),
+    modelName,
     total: grants.reduce((n, g) => n + g.total, 0),
     usableNow: live.some((g) => g.usableNow && !g.paused),
     nextExpiresAt: ends[0] || null,

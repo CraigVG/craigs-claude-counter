@@ -154,9 +154,15 @@ export function computeFleet(accounts, { now = Date.now(), weights = DEFAULT_WEI
   const known = list.filter((a) => a.usage && (a.usage.session || a.usage.weekly));
   const unknown = list.length - known.length;
   // Banked resets are a separate pool from capacity: they refill a limit on demand.
+  // Week resets and model (Fable) resets are counted apart; `left` is both.
   const banked = list.filter((a) => a.usage && a.usage.bankedResets && a.usage.bankedResets.left > 0)
-    .map((a) => ({ account: a.label || a.id, left: a.usage.bankedResets.left, nextExpiresAt: a.usage.bankedResets.nextExpiresAt || null }));
-  const bankedResets = { left: banked.reduce((n, b) => n + b.left, 0), accounts: banked };
+    .map((a) => {
+      const r = a.usage.bankedResets;
+      return { account: a.label || a.id, left: r.left, weeklyLeft: r.weeklyLeft ?? r.left, modelLeft: r.modelLeft ?? 0, modelName: r.modelName ?? null, nextExpiresAt: r.nextExpiresAt || null };
+    });
+  const names = [...new Set(banked.filter((b) => b.modelLeft > 0).map((b) => b.modelName).filter(Boolean))];
+  const total = (k) => banked.reduce((n, b) => n + b[k], 0);
+  const bankedResets = { left: total('left'), weeklyLeft: total('weeklyLeft'), modelLeft: total('modelLeft'), modelName: names.length === 1 ? names[0] : null, accounts: banked };
   const empty = {
     accounts: { total: list.length, counted: 0, unknown, blocked: 0, weightsAssumed: 0 },
     weightTotal: 0, usedPct: null, freePct: null, backSoonPct: null, lockedPct: null, severity: 'unknown',

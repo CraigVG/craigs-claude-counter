@@ -35,7 +35,7 @@ export function recordFrom(a, ts = new Date().toISOString()) {
     overage: u && u.overage && u.overage.enabled
       ? { usedUsd: num(u.overage.usedUsd), limitUsd: num(u.overage.limitUsd), pct: num(u.overage.pct) }
       : null,
-    banked: u && u.bankedResets ? { left: u.bankedResets.left, total: u.bankedResets.total, nextExpiresAt: u.bankedResets.nextExpiresAt || null } : null,
+    banked: u && u.bankedResets ? { left: u.bankedResets.left, weeklyLeft: u.bankedResets.weeklyLeft ?? null, modelLeft: u.bankedResets.modelLeft ?? null, total: u.bankedResets.total, nextExpiresAt: u.bankedResets.nextExpiresAt || null } : null,
     stale: !!a.stale,
     error: a.error || null,
   };
@@ -58,7 +58,7 @@ export function usageFromRecord(r, { warnPct = 70, critPct = 90 } = {}) {
     weeklySonnet: byName('Sonnet'),
     overage: r.overage ? { usedUsd: r.overage.usedUsd, limitUsd: r.overage.limitUsd, pct: r.overage.pct, currency: 'USD', enabled: true } : null,
     // Records keep only the counts; per-grant detail returns with the next live fetch.
-    bankedResets: r.banked ? { left: r.banked.left, total: r.banked.total, nextExpiresAt: r.banked.nextExpiresAt || null, usableNow: null, grants: [] } : null,
+    bankedResets: r.banked ? { left: r.banked.left, weeklyLeft: r.banked.weeklyLeft ?? r.banked.left, modelLeft: r.banked.modelLeft ?? 0, modelName: null, total: r.banked.total, nextExpiresAt: r.banked.nextExpiresAt || null, usableNow: null, grants: [] } : null,
   };
 }
 

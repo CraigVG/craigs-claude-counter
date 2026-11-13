@@ -191,6 +191,34 @@ test('bankedResetsFrom sums live grants and reports the soonest expiry', () => {
   assert.deepEqual(r.grants.map((x) => x.id), ['a', 'b']);
 });
 
+test('bankedResetsFrom splits week resets from Fable-only resets (2026-11 payload)', () => {
+  const NOV13 = Date.parse('2026-11-13T04:00:00Z');
+  const raw = {
+    limits: [
+      { kind: 'weekly_all', group: 'weekly', percent: 98, severity: 'critical', resets_at: '2026-11-13T05:00:00+00:00', scope: null, is_active: true },
+      { kind: 'weekly_scoped', group: 'weekly', percent: 75, severity: 'warning', resets_at: '2026-11-13T05:00:00+00:00', scope: { model: { id: null, display_name: 'Fable' }, surface: null }, is_active: false },
+    ],
+    weekly_scoped_shares: [{ limit_index: 1, used_percent_of_weekly: 38, allowance_percent_of_weekly: 50 }],
+    cedar_ember: { eligible: true, ineligible_reason: null, grants: [
+      { id: 'full-reset-2611', label: 'One full limit reset (November 2026)', resets_total: 1, resets_left: 1, starts_at: '2026-11-10T21:30:00+00:00', ends_at: '2026-12-10T22:00:00+00:00', clears: ['seven_day', 'seven_day_overage_included'], paused: false, usable_now: true, use_requires_limit: false, type: 'weekly', gives_back_weekly: false },
+      { id: 'launch-2610-fable', label: 'New model launch: one Fable reset', resets_total: 1, resets_left: 1, starts_at: '2026-11-09T18:00:00+00:00', ends_at: '2027-03-09T07:59:00+00:00', clears: ['seven_day_overage_included'], paused: false, usable_now: true, use_requires_limit: false, type: 'full', gives_back_weekly: true },
+      { id: 'launch-2610-fable-6mo', label: 'One more Fable reset at 6 months', resets_total: 1, resets_left: 1, starts_at: '2026-11-09T18:00:00+00:00', ends_at: '2027-03-09T07:59:00+00:00', clears: ['five_hour', 'seven_day_overage_included'], paused: false, usable_now: true, use_requires_limit: false, type: 'full', gives_back_weekly: true },
+    ], cooldown_until: null },
+  };
+  const r = bankedResetsFrom(raw, NOV13);
+  assert.equal(r.left, 3);
+  assert.equal(r.weeklyLeft, 1);
+  assert.equal(r.modelLeft, 2);
+  assert.equal(r.modelName, 'Fable');
+  assert.deepEqual(r.grants.map((g) => g.kind), ['weekly', 'model', 'model']);
+  assert.deepEqual(r.grants.map((g) => g.givesBackWeekly), [false, true, true]);
+  const fable = normalizeUsage(raw).weeklyModels[0];
+  assert.equal(fable.name, 'Fable');
+  assert.equal(fable.weeklySharePct, 38);
+  assert.equal(fable.weeklyAllowancePct, 50);
+  assert.equal(normalizeUsage(SAMPLE).weeklyModels[0].weeklySharePct, null);
+});
+
 test('bankedResetsFrom is null when the block is absent; ineligible reads as empty', () => {
   assert.equal(bankedResetsFrom({}), null);
   assert.equal(bankedResetsFrom({ cedar_ember: null }), null);

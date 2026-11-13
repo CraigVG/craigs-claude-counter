@@ -98,7 +98,7 @@ struct CCCWidgetView: View {
             }
             Spacer()
             if let b = entry.fleet?.bankedResets, b.left > 0 {
-                Text("↺ \(b.left) reset\(b.left == 1 ? "" : "s") banked")
+                Text("↺ \(b.countText(long: true)) banked")
                     .font(Theme.mono(10, .regular)).foregroundColor(Theme.ok)
             }
             Text(attn > 0 ? "\(attn) need attention" : "\(entry.accounts.count) healthy")
@@ -173,7 +173,7 @@ struct WFleet: View {
                 }
                 if let b = f.bankedResets, b.left > 0 {
                     Text("·").foregroundColor(Theme.ink4)
-                    Text("↺ \(b.left)").foregroundColor(Theme.ok)
+                    Text("↺ " + b.countText(long: false)).foregroundColor(Theme.ok)
                 }
                 if let r = f.pace.ratio {
                     Spacer(minLength: 4)
@@ -193,9 +193,9 @@ struct WRow: View {
             RoundedRectangle(cornerRadius: 1.5).fill(tickColor).frame(width: 3, height: 22)
             HStack(spacing: 5) {
                 Text(a.name).font(Theme.ui(12, .medium)).foregroundColor(Theme.ink).lineLimit(1).truncationMode(.middle)
-                if let left = a.usage?.bankedResets?.left, left > 0 {
+                if let r = a.usage?.bankedResets, r.left > 0 {
                     // A banked reset can refill this account's limits on demand.
-                    Text(left == 1 ? "↺" : "↺\(left)").font(Theme.mono(10.5, .semibold)).foregroundColor(Theme.ok)
+                    Text(r.left == 1 && (r.modelLeft ?? 0) == 0 ? "↺" : "↺" + r.countText(long: false)).font(Theme.mono(10.5, .semibold)).foregroundColor(Theme.ok)
                         .fixedSize()
                 }
             }

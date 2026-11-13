@@ -290,7 +290,7 @@ test('banked reset counts survive the record round trip', async () => {
   const { usageFromRecord } = await import('../src/history.mjs');
   const banked = { left: 1, total: 1, nextExpiresAt: '2026-10-22T16:00:00+00:00', usableNow: true, grants: [{ id: 'g', label: 'Launch reset', left: 1 }] };
   const r = recordFrom(acct({ usage: { ...acct().usage, bankedResets: banked } }), '2026-09-30T18:00:00.000Z');
-  assert.deepEqual(r.banked, { left: 1, total: 1, nextExpiresAt: '2026-10-22T16:00:00+00:00' });
+  assert.deepEqual(r.banked, { left: 1, weeklyLeft: null, modelLeft: null, total: 1, nextExpiresAt: '2026-10-22T16:00:00+00:00' });
   assert.equal(usageFromRecord(r).bankedResets.left, 1);
   assert.equal(recordFrom(acct(), '2026-09-30T18:00:00.000Z').banked, null);
 });

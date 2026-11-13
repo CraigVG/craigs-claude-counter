@@ -11,6 +11,12 @@ const port = process.env.CLAUDE_USAGE_PORT || 4319;
 const host = process.env.CLAUDE_USAGE_BIND || '127.0.0.1';
 const base = `http://${host}:${port}`;
 
+// "2 week resets + 3 Fable resets"; engines before v1.12.0 send no split.
+function resetCounts(r) {
+  const wk = r.weeklyLeft ?? r.left, md = r.modelLeft ?? 0;
+  return [wk ? `${wk} week reset${wk === 1 ? '' : 's'}` : '', md ? `${md} ${r.modelName || 'model'} reset${md === 1 ? '' : 's'}` : ''].filter(Boolean).join(' + ');
+}
+
 function bar(pct) {
   if (pct == null) return '—'.padEnd(10);
   const n = Math.round((pct / 100) * 10);
@@ -59,7 +65,7 @@ function showFleet(f) {
   const next = f.events.slice(0, 3).map((e) => `${e.account} ${e.kind} in ${reset(e.at)} (+${e.restoresPct}%)`).join(', ');
   if (next) console.log(`          next: ${next}${f.freshBy ? `; all weekly windows fresh by ${new Date(f.freshBy).toLocaleString()}` : ''}`);
   const br = f.bankedResets;
-  if (br?.left) console.log(`          ${br.left} banked limit reset${br.left === 1 ? '' : 's'}: ${br.accounts.map((b) => `${b.account} ${b.left}`).join(', ')}`);
+  if (br?.left) console.log(`          banked ${resetCounts(br)}: ${br.accounts.map((b) => `${b.account} ${resetCounts(b)}`).join(', ')}`);
   console.log('');
 }
 
@@ -80,7 +86,7 @@ async function showNow() {
     if (w) console.log(`   weekly   ${bar(w.pct)} ${String(w.pct ?? '—').padStart(3)}%  resets ${reset(w.resetsAt)}`);
     if (a.usage.overage?.enabled) console.log(`   overage  $${a.usage.overage.usedUsd.toFixed(2)} / $${a.usage.overage.limitUsd.toFixed(2)} (${a.usage.overage.pct}%)`);
     const br = a.usage.bankedResets;
-    if (br?.left > 0) console.log(`   banked   ${br.left} limit reset${br.left === 1 ? '' : 's'}${br.nextExpiresAt ? `, use by ${new Date(br.nextExpiresAt).toLocaleDateString()}` : ''}${br.usableNow ? ' (usable now)' : ''}`);
+    if (br?.left > 0) console.log(`   banked   ${resetCounts(br)}${br.nextExpiresAt ? `, use by ${new Date(br.nextExpiresAt).toLocaleDateString()}` : ''}${br.usableNow ? ' (usable now)' : ''}`);
     console.log('');
   }
 }

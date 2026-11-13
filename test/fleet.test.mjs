@@ -140,6 +140,18 @@ test('banked resets are totalled across accounts, separately from capacity', () 
   b.usage.bankedResets = { left: 0, total: 1, nextExpiresAt: null };
   const c = acct('c', 'Pro', win(10, 2), win(10, 50));
   const f = computeFleet([a, b, c], { now: NOW });
-  assert.deepEqual(f.bankedResets, { left: 1, accounts: [{ account: 'a', left: 1, nextExpiresAt: at(500) }] });
-  assert.deepEqual(computeFleet([], { now: NOW }).bankedResets, { left: 0, accounts: [] });
+  assert.deepEqual(f.bankedResets, { left: 1, weeklyLeft: 1, modelLeft: 0, modelName: null, accounts: [{ account: 'a', left: 1, weeklyLeft: 1, modelLeft: 0, modelName: null, nextExpiresAt: at(500) }] });
+  assert.deepEqual(computeFleet([], { now: NOW }).bankedResets, { left: 0, weeklyLeft: 0, modelLeft: 0, modelName: null, accounts: [] });
+});
+
+test('banked resets split week resets from Fable resets', () => {
+  const a = acct('a', 'Ultra', win(0, 2), win(98, 50));
+  a.usage.bankedResets = { left: 5, weeklyLeft: 2, modelLeft: 3, modelName: 'Fable', total: 5, nextExpiresAt: at(500) };
+  const b = acct('b', 'Team 5x', win(0, 2), win(66, 50));
+  b.usage.bankedResets = { left: 2, weeklyLeft: 1, modelLeft: 1, modelName: 'Fable', total: 2, nextExpiresAt: at(600) };
+  const f = computeFleet([a, b], { now: NOW });
+  assert.equal(f.bankedResets.left, 7);
+  assert.equal(f.bankedResets.weeklyLeft, 3);
+  assert.equal(f.bankedResets.modelLeft, 4);
+  assert.equal(f.bankedResets.modelName, 'Fable');
 });

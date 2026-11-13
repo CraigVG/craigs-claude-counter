@@ -51,9 +51,25 @@ struct FleetDTO: Decodable {
     var bankedResets: BankedFleet?
 
     struct BankedFleet: Decodable {
-        struct Holder: Decodable { var account: String; var left: Int; var nextExpiresAt: String? }
+        struct Holder: Decodable {
+            var account: String; var left: Int; var nextExpiresAt: String?
+            var weeklyLeft: Int?; var modelLeft: Int?; var modelName: String?
+        }
         var left: Int
+        var weeklyLeft: Int?
+        var modelLeft: Int?
+        var modelName: String?
         var accounts: [Holder]
+
+        func countText(long: Bool) -> String {
+            BankedResetsDTO.countText(left: left, weekly: weeklyLeft, model: modelLeft, modelName: modelName, long: long)
+        }
+        var helpText: String {
+            accounts.map { h in
+                "\(h.account): " + BankedResetsDTO.countText(left: h.left, weekly: h.weeklyLeft, model: h.modelLeft, modelName: h.modelName, long: true)
+                    + (h.nextExpiresAt.flatMap(BankedResetsDTO.day).map { ", use by \($0)" } ?? "")
+            }.joined(separator: "\n")
+        }
     }
 
     var tone: Severity {
@@ -136,8 +152,15 @@ struct BankedResetsDTO: Decodable {
         var usableNow: Bool?
         var useRequiresLimit: Bool?
         var paused: Bool?
+        /// "weekly" clears the week; "model" clears only a per-model weekly limit (Fable). Engine v1.12.0+.
+        var kind: String?
+        var givesBackWeekly: Bool?
     }
     var left: Int
+    /// Week resets and model-only (Fable) resets; nil from engines before v1.12.0.
+    var weeklyLeft: Int?
+    var modelLeft: Int?
+    var modelName: String?
     var total: Int?
     var usableNow: Bool?
     var nextExpiresAt: String?
@@ -149,11 +172,25 @@ struct BankedResetsDTO: Decodable {
             let by = g.endsAt.flatMap(BankedResetsDTO.day).map { ", use by \($0)" } ?? ""
             let when = g.paused == true ? "paused" : g.usableNow == true ? "usable now"
                 : g.useRequiresLimit != false ? "usable at a limit" : "not usable yet"
-            return "\(g.label ?? "Reset"): \(g.left) of \(g.total ?? g.left) left\(by) (\(when))"
+            let what = g.kind == "model" ? (g.givesBackWeekly == true ? " [model limit only; gives back its share of the week]" : " [model limit only]") : ""
+            return "\(g.label ?? "Reset"): \(g.left) of \(g.total ?? g.left) left\(by) (\(when))\(what)"
         }
         if lines.isEmpty, let d = nextExpiresAt.flatMap(BankedResetsDTO.day) { lines.append("use by \(d)") }
         lines.append("Refills your limits when used from Claude Code.")
         return lines.joined(separator: "\n")
+    }
+
+    /// "2 resets · 3 Fable" (long) or "2 F3" (short): week resets first, then
+    /// model-only resets. Mirrors resetCounts in the web page.
+    static func countText(left: Int, weekly: Int?, model: Int?, modelName: String?, long: Bool) -> String {
+        let wk = weekly ?? left, md = model ?? 0, name = modelName ?? "model"
+        var parts: [String] = []
+        if wk > 0 { parts.append(long ? "\(wk) reset\(wk == 1 ? "" : "s")" : "\(wk)") }
+        if md > 0 { parts.append(long ? "\(md) \(name)" : "\(name.prefix(1))\(md)") }
+        return parts.joined(separator: long ? " · " : " ")
+    }
+    func countText(long: Bool) -> String {
+        BankedResetsDTO.countText(left: left, weekly: weeklyLeft, model: modelLeft, modelName: modelName, long: long)
     }
 
     static func day(_ iso: String) -> String? {
@@ -174,6 +211,14 @@ struct ModelLimitDTO: Decodable {
     var resetsAt: String?
     var severity: String?
     var active: Bool?
+    /// The model's slice of the week: used so far and the most it may use, as % of the week.
+    var weeklySharePct: Double? = nil
+    var weeklyAllowancePct: Double? = nil
+
+    var shareHelp: String? {
+        guard let used = weeklySharePct, let cap = weeklyAllowancePct else { return nil }
+        return "\(name) has used \(Int(used))% of the week; it may use up to \(Int(cap))%. Its usage counts in the weekly limit too."
+    }
 }
 
 struct OverageDTO: Decodable {
