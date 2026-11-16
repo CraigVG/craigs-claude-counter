@@ -49,7 +49,7 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // `codex` in the weights, when set
 // (CLAUDE_USAGE_CODEX_WEIGHT), overrides every Codex plan. These are the
 // weights the bar uses.
-export const DEFAULT_WEIGHTS = { Ultra: 7, 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Max: 3.5, Pro: 1, 'Codex Pro': 7, 'Codex Plus': 1, unknown: 3.5 };
+export const DEFAULT_WEIGHTS = { Ultra: 7, 'Max 20x': 7, 'Max 5x': 3.5, 'Team 5x': 3.5, Max: 3.5, Pro: 1, 'Codex Pro': 7, 'Codex Pro Max': 7, 'Codex Plus': 1, unknown: 3.5 };
 // The 5-hour session bucket does follow the plan multiplier. Not used for the
 // bar (see the model note above); exported for anyone reasoning about burst rate.
 export const SESSION_WEIGHTS = { 'Max 20x': 20, 'Max 5x': 5, Max: 5, Pro: 1, unknown: 5 };

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { codexEntry, codexTier, createCodexSource, readCodex } from '../src/codex.mjs';
+import { codexEntry, codexTier, createCodexSource, findCodexBin, readCodex } from '../src/codex.mjs';
 import { tierWeight, computeFleet, DEFAULT_WEIGHTS } from '../src/fleet.mjs';
 
 const live = {
@@ -61,6 +61,32 @@ test('createCodexSource caches, shares one run, serves stale on failure, and hid
   const stale = await src3.get();
   assert.equal(stale[0].stale, true);
   assert.match(stale[0].message, /timed out/);
+});
+
+test('a failed read stays marked stale between retries, and clears on the next good read', async () => {
+  let fail = false, t = 1_000_000;
+  const realNow = Date.now; Date.now = () => t;
+  try {
+    const src = createCodexSource({ read: async () => { if (fail) throw new Error('boom'); return live; }, ttlMs: 1000, random: () => 0.5 });
+    await src.get();
+    fail = true; t += 5000;
+    assert.equal((await src.get())[0].stale, true);
+    t += 10_000; // inside the one-minute retry wait: still old data, still marked
+    const again = await src.get();
+    assert.equal(again[0].stale, true);
+    assert.match(again[0].message, /cached 1m ago; boom/);
+    fail = false; t += 61_000;
+    assert.equal((await src.get())[0].stale, undefined);
+  } finally { Date.now = realNow; }
+});
+
+test('findCodexBin falls back to the CLI bundled in ChatGPT.app, and names the Pro Max plan', () => {
+  const bundled = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex';
+  assert.equal(findCodexBin({}, (p) => p === bundled), bundled);
+  assert.equal(findCodexBin({}, (p) => p === bundled || p === '/opt/homebrew/bin/codex'), '/opt/homebrew/bin/codex');
+  assert.equal(findCodexBin({ CLAUDE_USAGE_CODEX_BIN: '/x/codex' }, () => false), '/x/codex');
+  assert.equal(codexTier('promax'), 'Codex Pro Max');
+  assert.deepEqual(tierWeight('Codex Pro Max'), { weight: 7, assumed: false });
 });
 
 test('readCodex speaks JSON-RPC to the app server and stops it', async () => {

@@ -15,14 +15,19 @@ import { dirname, join } from 'node:path';
 import { severityFor } from './usage.mjs';
 
 // The LaunchAgent runs with a minimal PATH, so look where Codex is installed.
-export function findCodexBin(env = process.env) {
+export function findCodexBin(env = process.env, exists = existsSync) {
   if (env.CLAUDE_USAGE_CODEX_BIN) return env.CLAUDE_USAGE_CODEX_BIN;
   const home = homedir();
-  const candidates = ['/opt/homebrew/bin/codex', '/usr/local/bin/codex', join(home, '.local/bin/codex'), join(home, '.npm-global/bin/codex')];
-  return candidates.find((p) => existsSync(p)) || 'codex';
+  // The ChatGPT desktop app bundles the CLI; on a Mac with no standalone
+  // install that copy is the only one (2026-11: the standalone one went away
+  // on one Mac and the counter showed a week-old number).
+  const bundled = 'ChatGPT.app/Contents/Resources/codex-cli/bin/codex';
+  const candidates = ['/opt/homebrew/bin/codex', '/usr/local/bin/codex', join(home, '.local/bin/codex'), join(home, '.npm-global/bin/codex'),
+    join('/Applications', bundled), join(home, 'Applications', bundled)];
+  return candidates.find((p) => exists(p)) || 'codex';
 }
 
-const PLAN_NAMES = { pro: 'Pro', plus: 'Plus', team: 'Team', business: 'Business', enterprise: 'Enterprise', edu: 'Edu', free: 'Free' };
+const PLAN_NAMES = { pro: 'Pro', promax: 'Pro Max', plus: 'Plus', team: 'Team', business: 'Business', enterprise: 'Enterprise', edu: 'Edu', free: 'Free' };
 export const codexTier = (planType) => `Codex ${PLAN_NAMES[String(planType || '').toLowerCase()] || planType || 'plan'}`;
 
 // One Codex rate-limit window -> the { pct, resetsAt, severity, active } shape
@@ -110,6 +115,8 @@ export function readCodex({ bin = findCodexBin(), codexHome = process.env.CODEX_
   });
 }
 
+const ageText = (ms) => (ms < 3_600_000 ? `${Math.max(1, Math.round(ms / 60_000))}m` : ms < 86_400_000 ? `${Math.round(ms / 3_600_000)}h` : `${Math.round(ms / 86_400_000)}d`);
+
 // Cached Codex reader for the engine: at most one app-server run per `ttlMs`
 // (jittered like the Claude cache), concurrent callers share one run, and a
 // failure serves the last good entry marked stale. Returns [] when Codex is
@@ -118,9 +125,13 @@ export function createCodexSource({ read = readCodex, ttlMs = 180_000, threshold
   let last = null; // { entry, fetchedAt, expiresAt }
   let inflight = null;
   let unavailable = null; // reason Codex is not shown
+  let failed = false; // the latest read failed: `last` is old data
+  // The last good entry, marked as old. Between retries too: a failed read
+  // must never be served as if it were current.
+  const staleEntry = () => ({ ...last.entry, stale: true, staleAgeMs: Date.now() - last.fetchedAt, message: `cached ${ageText(Date.now() - last.fetchedAt)} ago; ${unavailable}` });
   const get = async () => {
     const now = Date.now();
-    if (last && now < last.expiresAt) return [last.entry];
+    if (last && now < last.expiresAt) return [failed ? staleEntry() : last.entry];
     if (inflight) return inflight;
     inflight = (async () => {
       try {
@@ -130,14 +141,16 @@ export function createCodexSource({ read = readCodex, ttlMs = 180_000, threshold
         const t = Date.now();
         last = { entry, fetchedAt: t, expiresAt: t + Math.round(ttlMs * (0.75 + 0.5 * random())) };
         unavailable = null;
+        failed = false;
         return [entry];
       } catch (e) {
         const reason = e.code === 'ENOENT' ? 'codex CLI not found' : String(e.message || e);
         if (reason !== unavailable) log(`[codex] unavailable: ${reason}`);
         unavailable = reason;
         if (last) {
+          failed = true;
           last.expiresAt = Date.now() + 60_000; // retry in a minute
-          return [{ ...last.entry, stale: true, staleAgeMs: Date.now() - last.fetchedAt, message: `cached; ${reason}` }];
+          return [staleEntry()];
         }
         return [];
       } finally {
