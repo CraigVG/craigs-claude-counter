@@ -211,6 +211,9 @@ export function weeklyResets(records, { weights } = {}) {
 // `stepMs` thins the returned points (first poll per bucket); the summary
 // always covers every poll. Records must be sorted by ts.
 export function fleetHistory(records, { warnPct = 70, critPct = 90, intervalMs = 300_000, stepMs = null, since = null, weights } = {}) {
+  // The fleet is the Claude seats. Codex and Gemini are logged too (their own
+  // charts read them) but are not part of the fleet picture (Craig, 2026-11-23).
+  records = (records || []).filter((r) => !r.provider);
   const polls = [];
   let cur = null;
   for (const r of records || []) {

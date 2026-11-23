@@ -294,3 +294,16 @@ test('banked reset counts survive the record round trip', async () => {
   assert.equal(usageFromRecord(r).bankedResets.left, 1);
   assert.equal(recordFrom(acct(), '2026-09-30T18:00:00.000Z').banked, null);
 });
+
+test('fleetHistory leaves Codex and Gemini records out of the fleet', () => {
+  const ts = '2026-11-23T10:00:00.000Z';
+  const recs = [
+    { ts, account: 'a', tier: 'Max 20x', session: { pct: 0 }, weekly: { pct: 50 } },
+    { ts, account: 'codex:x', provider: 'codex', tier: 'Codex Pro', session: null, weekly: { pct: 100 } },
+    { ts, account: 'gemini:default', provider: 'gemini', tier: 'Gemini', session: { pct: 100 }, weekly: { pct: 100 } },
+  ];
+  const out = fleetHistory(recs);
+  assert.equal(out.points.length, 1);
+  assert.equal(out.points[0].usedPct, 50);
+  assert.equal(out.points[0].total, 1);
+});

@@ -12,8 +12,8 @@ configFiles:
 
 settings:
   base:
-    MARKETING_VERSION: "1.13.0"
-    CURRENT_PROJECT_VERSION: "18"
+    MARKETING_VERSION: "1.14.0"
+    CURRENT_PROJECT_VERSION: "19"
     SWIFT_VERSION: "5.0"
 
 targets:

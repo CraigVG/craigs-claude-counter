@@ -31,7 +31,7 @@ struct AccountCard: View {
                 Spacer()
                 actions
             }
-            cardMetric("Session · 5h", a.usage?.session, .session, noLimit: a.usage?.sessionLimit == false)
+            cardMetric("Session · 5h", a.usage?.session, .session, noLimit: a.usage?.sessionLimit == false || (a.provider != nil && a.usage?.session?.pct == nil))
             cardMetric("Weekly", a.usage?.weekly, .weekly)
             if hasExtras {
                 HStack(alignment: .top) {
@@ -67,8 +67,10 @@ struct AccountCard: View {
                 Button(action: onRelogin) { Text("Re-login").font(Theme.ui(11.5, .medium)) }
                     .buttonStyle(PillButton(color: Theme.alarm))
             }
-            Button(action: onRemove) { Text("✕").font(Theme.ui(13)) }
-                .buttonStyle(PillButton(color: Theme.ink3, subtle: true))
+            if a.provider == nil {   // Codex / Gemini: nothing to remove here
+                Button(action: onRemove) { Text("✕").font(Theme.ui(13)) }
+                    .buttonStyle(PillButton(color: Theme.ink3, subtle: true))
+            }
         }
     }
 

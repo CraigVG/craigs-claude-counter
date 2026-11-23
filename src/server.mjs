@@ -311,11 +311,12 @@ export function createServer(deps = {}) {
     );
     const codexEntries = codex ? await codex.get().catch(() => []) : [];
     const geminiEntries = gemini ? await gemini.get().catch(() => []) : [];
-    // `fleet` folds every account, Codex included, into one capacity-weighted
+    // `fleet` folds the Claude accounts (not Codex or Gemini: the agents that
+    // draw on the fleet cannot use those) into one capacity-weighted
     // picture (see src/fleet.mjs). `weights` lets the page use the same ones.
     return {
       generatedAt: new Date().toISOString(), thresholds, accounts: results, codex: codexEntries, gemini: geminiEntries,
-      fleet: computeFleet([...results, ...codexEntries, ...geminiEntries], { ...thresholds, weights }), weights,
+      fleet: computeFleet(results, { ...thresholds, weights }), weights,
     };
   };
 

@@ -27,7 +27,7 @@ struct BoardLayout {
     /// decide `auto` density. Chrome (244) = outer padding, header, summary
     /// strip, board header, legend and the spacing between them. A comfortable
     /// row is the stacked metric cell (~60pt) + 30pt padding + divider.
-    static func comfortableHeight(rows: Int, fleet: Bool = false, codex: Int = 0) -> CGFloat { 244 + (fleet ? 132 : 0) + CGFloat(codex) * 84 + CGFloat(rows) * 91 }
+    static func comfortableHeight(rows: Int, fleet: Bool = false, codex: Int = 0) -> CGFloat { 244 + (fleet ? 132 : 0) + (codex > 0 ? 30 : 0) + CGFloat(codex + rows) * 91 }
 }
 
 struct DashboardView: View {
@@ -45,7 +45,8 @@ struct DashboardView: View {
 
     private var density: Density { Density(rawValue: densityRaw) ?? .auto }
 
-    /// Codex and Gemini entries (each in its own panel, counted in the fleet).
+    /// Codex and Gemini entries: one board row each, in their own strip under the
+    /// fleet bar (cards after the accounts when the window is narrow). Not in the fleet (the Claude Code agents cannot use them).
     private var codex: [AccountDTO] { (model.snapshot?.codex ?? []) + (model.snapshot?.gemini ?? []) }
 
     /// The fleet picture, when the engine could count at least one account.
@@ -78,9 +79,7 @@ struct DashboardView: View {
                         if let f = fleet {
                             FleetBar(fleet: f, compact: compact, narrow: narrow, onOpen: { model.openFleetHistory() })
                         }
-                        if !codex.isEmpty {
-                            CodexPanel(entries: codex, compact: compact, narrow: narrow, onOpen: { model.openHistory($0) })
-                        }
+                        if !codex.isEmpty && !narrow { otherTools(layout) }
                         SummaryStrip(accounts: accounts, compact: compact)
                         ScrollView(showsIndicators: false) {
                             if narrow { cardsList } else { board(layout) }
@@ -103,7 +102,7 @@ struct DashboardView: View {
             case .history(let a):
                 HistorySheet(model: model, account: a)
             case .fleetHistory:
-                FleetHistorySheet(model: model, accounts: (model.snapshot?.accounts ?? []) + codex)
+                FleetHistorySheet(model: model, accounts: model.snapshot?.accounts ?? [])
             }
         }
     }
@@ -145,6 +144,20 @@ struct DashboardView: View {
                             onRemove: { model.openRemove(a) },
                             onOpen: { model.openHistory(a) })
             }
+            if !codex.isEmpty {
+                otherToolsLabel.padding(.top, 4)
+                ForEach(codex) { a in
+                    AccountCard(a: a, onRelogin: {}, onRemove: {}, onOpen: { model.openHistory(a) })
+                }
+            }
+        }
+    }
+
+    private var otherToolsLabel: some View {
+        HStack(spacing: 8) {
+            Text("OTHER TOOLS").font(Theme.mono(10.5, .medium)).tracking(1.0).foregroundColor(Theme.ink3)
+            Text("Codex and Gemini, used by builders · not in fleet capacity").font(Theme.mono(10.5, .regular)).foregroundColor(Theme.ink4).lineLimit(1)
+            Spacer(minLength: 0)
         }
     }
 
@@ -162,6 +175,22 @@ struct DashboardView: View {
                                onRemove: { model.openRemove(a) },
                                onOpen: { model.openHistory(a) })
                 Divider().background(Theme.hairSoft)
+            }
+        }
+        .background(Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hair, lineWidth: 1))
+    }
+
+    /// Codex and Gemini as board rows in their own strip (outside the scrolling
+    /// board, so they stay in view).
+    private func otherTools(_ layout: BoardLayout) -> some View {
+        VStack(spacing: 0) {
+            otherToolsLabel.padding(.horizontal, 16).padding(.vertical, 7)
+                .background(Color.white.opacity(0.015))
+            ForEach(codex) { a in
+                Divider().background(Theme.hairSoft)
+                AccountRowView(a: a, layout: layout, onRelogin: {}, onRemove: {}, onOpen: { model.openHistory(a) })
             }
         }
         .background(Theme.panel)
@@ -304,10 +333,12 @@ struct AccountRowView: View {
             Rectangle().fill(tickColor).frame(width: layout.tick, height: layout.tickHeight)
             account.frame(maxWidth: .infinity, alignment: .leading)
             plan.frame(width: layout.plan, alignment: .leading)
-            MetricCell(w: a.usage?.session, kind: .session, dim: a.isRelogin, compact: compact, noLimit: a.usage?.sessionLimit == false).frame(width: layout.metric, alignment: .leading)
+            MetricCell(w: a.usage?.session, kind: .session, dim: a.isRelogin, compact: compact, noLimit: a.usage?.sessionLimit == false || (a.provider != nil && a.usage?.session?.pct == nil)).frame(width: layout.metric, alignment: .leading)
             MetricCell(w: a.usage?.weekly, kind: .weekly, dim: a.isRelogin, compact: compact).frame(width: layout.metric, alignment: .leading)
             ModelCell(usage: a.usage, compact: compact).frame(width: layout.model, alignment: .leading)
-            OverageCell(usage: a.usage, compact: compact).frame(width: layout.over, alignment: .leading)
+            Group {
+                if a.provider != nil { CreditsCell(usage: a.usage, compact: compact) } else { OverageCell(usage: a.usage, compact: compact) }
+            }.frame(width: layout.over, alignment: .leading)
             actions.frame(width: layout.action, alignment: .trailing)
         }
         .padding(.horizontal, 16).padding(.vertical, layout.rowVPad)
@@ -355,7 +386,8 @@ struct AccountRowView: View {
     }
 
     private var plan: some View {
-        Text(a.tier ?? "—")
+        // The Codex row's name already says Codex; the pill shows the plan only.
+        Text((a.provider == "codex" ? a.tier?.replacingOccurrences(of: "Codex ", with: "") : a.tier) ?? "—")
             .font(Theme.mono(layout.compact ? 11 : 11.5, .regular)).foregroundColor(a.tier == nil ? Theme.ink4 : Theme.ink2)
             .lineLimit(1).minimumScaleFactor(0.7)
             .padding(.horizontal, 8).padding(.vertical, layout.compact ? 2 : 3)
@@ -364,6 +396,12 @@ struct AccountRowView: View {
     }
 
     @ViewBuilder private var actions: some View {
+        // Codex / Gemini sign in through their own CLI: nothing to do here.
+        // (A clear view, not nothing: an empty column collapses and shifts the row.)
+        if a.provider == nil { claudeActions } else { Color.clear.frame(height: 1) }
+    }
+
+    @ViewBuilder private var claudeActions: some View {
         HStack(spacing: 8) {
             if a.isRelogin {
                 // fixedSize: the column is narrower than the pill plus ✕, and a
@@ -527,6 +565,23 @@ struct BankedResetsLine: View {
             }
             .lineLimit(1).minimumScaleFactor(0.85)
             .help(r.helpText)
+        }
+    }
+}
+
+/// Codex reports a credits balance where a Claude account has overage.
+struct CreditsCell: View {
+    let usage: UsageDTO?
+    var compact: Bool = false
+    var body: some View {
+        if let b = usage?.credits?.balance {
+            HStack(spacing: 4) {
+                Text(Int(b.rounded()).formatted()).fontWeight(.semibold).foregroundColor(Theme.ink2)
+                Text("credits").foregroundColor(Theme.ink3)
+            }
+            .font(Theme.mono(compact ? 11 : 11.5, .regular)).lineLimit(1)
+        } else {
+            Text("—").font(Theme.mono(12, .regular)).foregroundColor(Theme.ink4)
         }
     }
 }

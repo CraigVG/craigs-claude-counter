@@ -79,22 +79,14 @@
   .fleet-free { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
   .fleet-free b { color: var(--ink); font-weight: 600; }
   .fleet-head .spacer { flex: 1; }
-  /* Codex: its own panel and bar under the fleet bar (it also counts in the fleet). */
-  .codex { cursor: pointer; }
-  .codex > div + div { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair); }
-  .codex .cx-who { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .codex .cx-plan { font-family: var(--mono); font-size: 11px; color: var(--ink-3); border: 1px solid var(--hair); border-radius: 5px; padding: 1px 7px; white-space: nowrap; }
-  .codex .cx-credits { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
-  .codex .cx-credits b { color: var(--ink-2); font-weight: 600; }
-  .codex .cx-win { display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 12px; margin-top: 8px; }
-  .codex .cx-win .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
-  .codex .cx-win .v { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .codex .cx-win .v b { color: var(--ink); font-weight: 600; }
-  .codex .cx-bar { height: 10px; background: #20242c; border-radius: 5px; overflow: hidden; }
-  .codex .cx-bar > i { display: block; height: 100%; background: var(--calm); border-radius: 5px; transition: width .45s cubic-bezier(.2,.7,.3,1); }
-  .codex .cx-bar.warn > i { background: var(--warn); } .codex .cx-bar.alarm > i { background: var(--alarm); }
-  .codex .cx-note { font-family: var(--mono); font-size: 11px; color: var(--ink-4); margin-top: 8px; }
-  @media (max-width: 760px) { .codex .cx-win { grid-template-columns: 58px 1fr; } .codex .cx-win .v { grid-column: 1 / -1; } }
+  /* Codex and Gemini: one board row each, in their own strip under the fleet bar. */
+  .board.others { margin-bottom: 12px; }
+  .board.others .group-label { border-top: none; border-bottom: 1px solid var(--hair-soft, var(--hair)); }
+  .board.others .row:last-child { border-bottom: none; }
+  .group-label { padding: 9px 16px 7px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); border-top: 1px solid var(--hair); background: rgba(255,255,255,0.015); }
+  .group-label span { color: var(--ink-4); text-transform: none; letter-spacing: 0; margin-left: 8px; }
+  .row .credits { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+  .row .credits b { color: var(--ink-2); font-weight: 600; }
   .fleet-pace { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
   .fleet-pace b { color: var(--ink-2); font-weight: 600; }
   .fleet-pace.hot b { color: var(--warn); }
@@ -384,7 +376,8 @@
     .board, .board-scroll { background: transparent; border: none; border-radius: 0; overflow: visible; }
     .grid.head { display: none !important; }
     .grid { display: flex !important; flex-direction: column; align-items: stretch; gap: 13px; min-width: 0 !important; }
-    .grid.row { background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; }
+    .grid.row { background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+    .board.others .group-label { border: none; background: none; padding: 0 2px 8px; }
     .grid.row:hover { background: var(--panel); }
     .grid.row.alarm { background: var(--alarm-bg); border-color: var(--alarm-edge); }
     .grid.row.relogin { border-color: var(--alarm-edge); }
@@ -418,7 +411,8 @@
     </div>
 
     <div id="fleet" class="fleet" style="display:none"></div>
-    <div id="codex" class="fleet codex" style="display:none"></div>
+
+    <div class="board others" id="others" style="display:none"><div class="board-scroll"><div id="other-rows"></div></div></div>
 
     <div id="summary" class="summary" role="status" style="display:none"></div>
 
@@ -563,6 +557,11 @@ function modelCell(u){
   return `<div class="models">${lbl}${parts.length ? parts.join('') : '<span class="none">&mdash;</span>'}</div>`;
 }
 
+// Codex reports a credits balance where a Claude account has overage.
+function creditsCell(u){
+  const b = u && u.credits && u.credits.balance;
+  return `<div class="overage"><span class="clabel">Credits</span>${b != null ? `<span class="credits"><b>${Math.round(b).toLocaleString('en-US')}</b> credits</span>` : '<span class="none">&mdash;</span>'}</div>`;
+}
 function overageCell(u){
   const lbl = `<span class="clabel">Overage</span>`;
   const o = u && u.overage;
@@ -625,6 +624,7 @@ function rowFor(a){
   const weekly  = isErrored && !u ? null : (u && u.weekly);
 
   let actions = `<button class="rowbtn del" title="Remove from dashboard" data-del="${esc(a.id)}" data-label="${esc(a.label||a.id)}" aria-label="Remove">&#x2715;</button>`;
+  if (a.provider) actions = '';   // Codex / Gemini: signed in through their own CLI, nothing to remove here
   const offer = reloginOffered(a);
   if(offer){
     const due = offer === 'due' ? new Date(a.login.reloginDueAt).toISOString().slice(5, 10) : '';
@@ -637,11 +637,11 @@ function rowFor(a){
       <button type="button" class="email" data-hist title="${esc(a.label||a.id)}: show usage over time">${esc(a.label||a.id)}</button>
       ${tags.length ? `<span class="tags">${tags.join('')}</span>` : ''}
     </div>
-    <div class="plan">${a.tier ? `<span class="pill">${esc(a.tier)}</span>` : '<span class="pill" style="color:var(--ink-4)">—</span>'}</div>
-    <div>${metricCell(session, 'session', !!u && u.sessionLimit === false)}</div>
+    <div class="plan">${a.tier ? `<span class="pill" title="${esc(a.tier)}">${esc(a.provider === 'codex' ? a.tier.replace(/^Codex /, '') : a.tier)}</span>` : '<span class="pill" style="color:var(--ink-4)">—</span>'}</div>
+    <div>${metricCell(session, 'session', !!u && (u.sessionLimit === false || (!!a.provider && !session)))}</div>
     <div>${metricCell(weekly, 'weekly')}</div>
     <div>${modelCell(u)}</div>
-    <div>${overageCell(u)}</div>
+    <div>${a.provider ? creditsCell(u) : overageCell(u)}</div>
     <div class="actions-cell">${actions}</div>
   </div>`;
 }
@@ -652,39 +652,22 @@ function rowFor(a){
 const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const fmtClock = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 function inText(iso){ const t = shortDur(iso); return t === 'now' ? 'now' : t ? `in ${t}` : ''; }
-// The fleet counts Claude accounts, Codex and Gemini (served apart as
-// latest.codex and latest.gemini; both use the Codex panel),
+// Codex and Gemini are served apart (latest.codex, latest.gemini) and are not
+// in the fleet; the fleet counts the Claude accounts,
 // with the engine's weights so a Codex week weighs what the engine says.
 const codexEntries = () => [...(latest?.codex || []), ...(latest?.gemini || [])];
-const providerName = (c) => (c.provider === 'gemini' ? 'Gemini' : 'Codex');
 function fleetFor(accounts){
-  return computeFleet([...accounts, ...codexEntries()], { warnPct: latest?.thresholds?.warnPct ?? 70, critPct: latest?.thresholds?.critPct ?? 90, ...(latest?.weights ? { weights: latest.weights } : {}) });
+  return computeFleet(accounts, { warnPct: latest?.thresholds?.warnPct ?? 70, critPct: latest?.thresholds?.critPct ?? 90, ...(latest?.weights ? { weights: latest.weights } : {}) });
 }
 
-// Codex panel: its own bar per rate-limit window, credits, click for history.
-function renderCodex(){
-  const el = $('#codex'), list = codexEntries();
-  if (!list.length) { el.style.display = 'none'; return; }
-  el.style.display = 'block';
-  el.innerHTML = list.map((c) => {
-    const u = c.usage || {};
-    const wins = [['Weekly', u.weekly], ['5h', u.session]].filter(([, w]) => w && w.pct != null);
-    const credits = u.credits && u.credits.balance != null ? `<span class="cx-credits"><b>${Math.round(u.credits.balance).toLocaleString('en-US')}</b> credits</span>` : '';
-    const rows = wins.map(([k, w]) => {
-      const cls = w.pct >= 90 ? 'alarm' : w.pct >= 70 ? 'warn' : '';
-      const when = w.pct > 0 && w.resetsAt ? `<span data-reset="${esc(w.resetsAt)}">${esc(resetText(w.resetsAt))}</span>` : (w.resetsAt ? `resets ${esc(fmtDay(w.resetsAt))}` : '');
-      return `<div class="cx-win"><span class="k">${k}</span><div class="cx-bar ${cls}"><i style="width:${Math.max(1, Math.min(100, w.pct))}%"></i></div><span class="v"><b>${Math.round(w.pct)}%</b> used${when ? ' &middot; ' + when : ''}</span></div>`;
-    }).join('');
-    const note = c.stale ? `<div class="cx-note">${esc(c.message || 'cached')}</div>` : (u.limitReached ? `<div class="cx-note">limit reached (${esc(u.limitReached)})</div>` : '');
-    return `<div data-codex="${esc(c.id)}" title="Click for ${providerName(c)} usage over time. Counts in the fleet bar.">
-      <div class="fleet-head"><span class="fleet-title">${providerName(c)}</span><span class="cx-who">${esc(c.email || (c.provider === 'gemini' ? 'Antigravity CLI' : c.label))}</span>${c.tier && c.tier !== providerName(c) ? `<span class="cx-plan">${esc(c.tier)}</span>` : ''}<span class="spacer"></span>${credits}</div>
-      ${rows || '<div class="cx-note">no rate-limit windows reported</div>'}${note}
-    </div>`;
-  }).join('');
-  el.className = `fleet codex ${tone(list)}`;
-  function tone(l){ const w = Math.max(0, ...l.flatMap((c) => [c.usage?.weekly?.pct ?? 0, c.usage?.session?.pct ?? 0])); return w >= 90 ? 'alarm' : w >= 70 ? 'warn' : ''; }
+// Codex and Gemini: one board row each, in their own strip under the fleet bar. They are
+// not in the fleet bar: the Claude Code agents that draw on the fleet cannot
+// use them.
+function renderOthers(){
+  const list = codexEntries();
+  $('#others').style.display = list.length ? '' : 'none';
+  $('#other-rows').innerHTML = list.length ? `<div class="group-label">Other tools<span>Codex and Gemini, used by builders &middot; not in fleet capacity</span></div>` + list.map(rowFor).join('') : '';
 }
-$('#codex').addEventListener('click', (e) => { const d = e.target.closest('[data-codex]'); if (d) openHistory(d.dataset.codex); });
 function renderFleet(accounts){
   const el = $('#fleet');
   const f = fleetFor(accounts);
@@ -796,7 +779,7 @@ function render(){
   $('#empty').style.display = has ? 'none' : 'block';
   $('#acct-count').textContent = has ? `${accounts.length} account${accounts.length===1?'':'s'}` : '';
   $('#density').style.display = has ? '' : 'none';
-  if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); renderFleet(accounts); renderCodex(); buildSummary(accounts); }
+  if(has){ $('#rows').innerHTML = accounts.map(rowFor).join(''); renderFleet(accounts); renderOthers(); buildSummary(accounts); }
   else { $('#fleet').style.display = 'none'; $('#summary').style.display = 'none'; }
   updateFreshness();
   renderSortUi();
@@ -992,11 +975,13 @@ const DRAW_ORDER = ['session', 'model', 'weekly'];   // weekly, the one that loc
 const MINUTE = 60000, HOUR_MS = 60 * MINUTE, DAY_MS = 24 * HOUR_MS;
 let histState = null;
 
-$('#rows').addEventListener('click', (e) => {
+const onRowClick = (e) => {
   if (e.target.closest('button:not([data-hist])')) return;   // Re-login / remove keep their own action
   const row = e.target.closest('.row[data-id]');
   if (row) openHistory(row.dataset.id);
-});
+};
+$('#board').addEventListener('click', onRowClick);
+$('#others').addEventListener('click', onRowClick);
 $('#fleet').addEventListener('click', (e) => {
   if (e.target.closest('[data-fleet-hist], .fleet-bar')) openFleetHistory();
 });
@@ -1024,7 +1009,7 @@ function openHistory(id){
 function openFleetHistory(){
   let range = parseRange();
   try { range = parseRange(localStorage.getItem(HIST_KEY)); } catch {}
-  const n = (latest?.accounts || []).length + codexEntries().length;
+  const n = (latest?.accounts || []).length;
   histState = { kind: 'fleet', label: 'Fleet capacity', range, records: null, summary: null, intervalMs: 300000, seq: 0, opener: document.activeElement };
   $('#hist-title').textContent = 'Fleet capacity';
   $('#hist-sub').textContent = n ? `${n} account${n === 1 ? '' : 's'}, plan-weighted` : '';
@@ -1263,7 +1248,7 @@ const max20x = (units) => { const v = units / 7; return v >= 1 || v === 0 ? v.to
 // Accounts whose weekly window resets within 48 h with capacity left: what
 // will expire unused unless work moves there. From the live board numbers.
 function expiringSoon(){
-  const now = Date.now(), accts = [...(latest?.accounts || []), ...codexEntries()];
+  const now = Date.now(), accts = latest?.accounts || [];
   const W = fleetFor(accts).weightTotal || 0;
   return accts.map((a) => {
     const w = a.usage?.weekly, at = Date.parse(w?.resetsAt || '');
