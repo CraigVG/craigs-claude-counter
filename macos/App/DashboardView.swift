@@ -45,8 +45,8 @@ struct DashboardView: View {
 
     private var density: Density { Density(rawValue: densityRaw) ?? .auto }
 
-    /// Codex entries (shown in their own panel, counted in the fleet).
-    private var codex: [AccountDTO] { model.snapshot?.codex ?? [] }
+    /// Codex and Gemini entries (each in its own panel, counted in the fleet).
+    private var codex: [AccountDTO] { (model.snapshot?.codex ?? []) + (model.snapshot?.gemini ?? []) }
 
     /// The fleet picture, when the engine could count at least one account.
     private var fleet: FleetDTO? {

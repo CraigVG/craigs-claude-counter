@@ -8,6 +8,7 @@ import { createCredStore, newAccountId } from './credstore.mjs';
 import * as oauthLib from './oauth.mjs';
 import * as usageLib from './usage.mjs';
 import { createCodexSource } from './codex.mjs';
+import { createGeminiSource } from './gemini.mjs';
 import { createHistory, startUsagePoller, parseTime, parseStep, summarize, toCsv, usageFromRecord, latestPerAccount, fleetHistory } from './history.mjs';
 import { computeFleet, DEFAULT_WEIGHTS } from './fleet.mjs';
 
@@ -270,7 +271,10 @@ export function createServer(deps = {}) {
   // Codex usage (separate from `accounts`; see src/codex.mjs). Tests pass none.
   const codex = deps.codex !== undefined ? deps.codex
     : (config.codexEnabled ? createCodexSource({ ttlMs: config.cacheTtlMs ?? 180_000, thresholds, log: (m) => console.log(m) }) : null);
-  const weights = config.codexWeight ? { ...DEFAULT_WEIGHTS, codex: config.codexWeight } : DEFAULT_WEIGHTS;
+  // Gemini usage through the Antigravity CLI (see src/gemini.mjs), same shape.
+  const gemini = deps.gemini !== undefined ? deps.gemini
+    : (config.geminiEnabled ? createGeminiSource({ ttlMs: config.cacheTtlMs ?? 180_000, thresholds, log: (m) => console.log(m) }) : null);
+  const weights = { ...DEFAULT_WEIGHTS, ...(config.codexWeight ? { codex: config.codexWeight } : {}), ...(config.geminiWeight ? { gemini: config.geminiWeight } : {}) };
   // Usage history store (null when no dir is configured, e.g. in tests).
   const history = deps.history !== undefined ? deps.history
     : (config.historyDir ? createHistory({ dir: config.historyDir, retentionDays: config.historyRetentionDays, log: (m) => console.log(`[history] ${m}`) }) : null);
@@ -306,11 +310,12 @@ export function createServer(deps = {}) {
       accounts.map((a) => accountUsage(a, { oauth, credstore, usage, thresholds, cache: usageCache, locks: refreshLocks, inflight, gate, random, cacheTtl: config.cacheTtlMs, cooldownMs: config.rateLimitCooldownMs })),
     );
     const codexEntries = codex ? await codex.get().catch(() => []) : [];
+    const geminiEntries = gemini ? await gemini.get().catch(() => []) : [];
     // `fleet` folds every account, Codex included, into one capacity-weighted
     // picture (see src/fleet.mjs). `weights` lets the page use the same ones.
     return {
-      generatedAt: new Date().toISOString(), thresholds, accounts: results, codex: codexEntries,
-      fleet: computeFleet([...results, ...codexEntries], { ...thresholds, weights }), weights,
+      generatedAt: new Date().toISOString(), thresholds, accounts: results, codex: codexEntries, gemini: geminiEntries,
+      fleet: computeFleet([...results, ...codexEntries, ...geminiEntries], { ...thresholds, weights }), weights,
     };
   };
 

@@ -115,44 +115,44 @@ export function readCodex({ bin = findCodexBin(), codexHome = process.env.CODEX_
   });
 }
 
-const ageText = (ms) => (ms < 3_600_000 ? `${Math.max(1, Math.round(ms / 60_000))}m` : ms < 86_400_000 ? `${Math.round(ms / 3_600_000)}h` : `${Math.round(ms / 86_400_000)}d`);
+export const ageText = (ms) => (ms < 3_600_000 ? `${Math.max(1, Math.round(ms / 60_000))}m` : ms < 86_400_000 ? `${Math.round(ms / 3_600_000)}h` : `${Math.round(ms / 86_400_000)}d`);
 
-// Cached Codex reader for the engine: at most one app-server run per `ttlMs`
-// (jittered like the Claude cache), concurrent callers share one run, and a
-// failure serves the last good entry marked stale. Returns [] when Codex is
-// not installed or not signed in, so the board simply has no Codex section.
-export function createCodexSource({ read = readCodex, ttlMs = 180_000, thresholds, random = Math.random, log = () => {} } = {}) {
+// Cached reader for a provider that is read through its own CLI (Codex here,
+// Gemini in src/gemini.mjs): at most one CLI run per `ttlMs` (jittered like
+// the Claude cache), concurrent callers share one run, and a failure serves
+// the last good entry marked stale. Returns [] when the CLI is not installed
+// or not signed in, so the board simply has no section for it. After a
+// failure the next run waits a minute (or the error's `retryMs`), with or
+// without a last good entry.
+export function createCliSource({ read, entryFrom, tag, ttlMs = 180_000, random = Math.random, log = () => {} }) {
   let last = null; // { entry, fetchedAt, expiresAt }
   let inflight = null;
-  let unavailable = null; // reason Codex is not shown
+  let unavailable = null; // reason the provider is not shown
   let failed = false; // the latest read failed: `last` is old data
+  let retryAt = 0;
   // The last good entry, marked as old. Between retries too: a failed read
   // must never be served as if it were current.
   const staleEntry = () => ({ ...last.entry, stale: true, staleAgeMs: Date.now() - last.fetchedAt, message: `cached ${ageText(Date.now() - last.fetchedAt)} ago; ${unavailable}` });
   const get = async () => {
     const now = Date.now();
-    if (last && now < last.expiresAt) return [failed ? staleEntry() : last.entry];
+    if (failed && now < retryAt) return last ? [staleEntry()] : [];
+    if (last && !failed && now < last.expiresAt) return [last.entry];
     if (inflight) return inflight;
     inflight = (async () => {
       try {
-        const out = await read();
-        if (!out.rateLimits) throw new Error('no rate limits (not signed in?)');
-        const entry = codexEntry(out, thresholds);
+        const entry = entryFrom(await read());
         const t = Date.now();
         last = { entry, fetchedAt: t, expiresAt: t + Math.round(ttlMs * (0.75 + 0.5 * random())) };
         unavailable = null;
         failed = false;
         return [entry];
       } catch (e) {
-        const reason = e.code === 'ENOENT' ? 'codex CLI not found' : String(e.message || e);
-        if (reason !== unavailable) log(`[codex] unavailable: ${reason}`);
+        const reason = e.code === 'ENOENT' ? `${tag} CLI not found` : String(e.message || e);
+        if (reason !== unavailable) log(`[${tag}] unavailable: ${reason}`);
         unavailable = reason;
-        if (last) {
-          failed = true;
-          last.expiresAt = Date.now() + 60_000; // retry in a minute
-          return [staleEntry()];
-        }
-        return [];
+        failed = true;
+        retryAt = Date.now() + (e.retryMs ?? 60_000);
+        return last ? [staleEntry()] : [];
       } finally {
         inflight = null;
       }
@@ -160,4 +160,12 @@ export function createCodexSource({ read = readCodex, ttlMs = 180_000, threshold
     return inflight;
   };
   return { get, status: () => ({ unavailable, fetchedAt: last ? new Date(last.fetchedAt).toISOString() : null }) };
+}
+
+export function createCodexSource({ read = readCodex, ttlMs = 180_000, thresholds, random = Math.random, log = () => {} } = {}) {
+  const entryFrom = (out) => {
+    if (!out.rateLimits) throw new Error('no rate limits (not signed in?)');
+    return codexEntry(out, thresholds);
+  };
+  return createCliSource({ read, entryFrom, tag: 'codex', ttlMs, random, log });
 }

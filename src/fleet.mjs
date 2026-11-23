@@ -68,6 +68,8 @@ const ms = (iso) => { const t = iso ? new Date(iso).getTime() : NaN; return Numb
 export function tierWeight(tier, weights = DEFAULT_WEIGHTS) {
   const t = String(tier || '').toLowerCase();
   // Codex first: "Codex Pro" must not fall through to Claude Pro's weight.
+  // Gemini (Antigravity) reports no plan name; one weight covers it.
+  if (/gemini/.test(t)) return { weight: weights.gemini ?? 1, assumed: false };
   if (/codex/.test(t)) {
     if (weights.codex != null) return { weight: weights.codex, assumed: false };
     if (weights[tier] != null) return { weight: weights[tier], assumed: false };

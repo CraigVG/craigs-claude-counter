@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Codex (ChatGPT plan) usage: its own panel and bar under the fleet bar, one
+/// Codex (ChatGPT plan) and Gemini (Antigravity CLI) usage: each its own panel and bar under the fleet bar, one
 /// bar per rate-limit window Codex reports (weekly, and a 5-hour window when
 /// there is one), plus the credits balance. Click for the same over-time
 /// chart as a Claude account. Codex also counts in the fleet bar (engine:
@@ -18,13 +18,15 @@ struct CodexPanel: View {
     }
 
     private func panel(_ c: AccountDTO) -> some View {
+        let isGemini = c.provider == "gemini"
+        let title = isGemini ? "Gemini" : "Codex"
         let wins: [(String, WindowDTO)] = [("WEEKLY", c.usage?.weekly), ("5H", c.usage?.session)]
             .compactMap { k, w in w?.pct == nil ? nil : (k, w!) }
         return VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             HStack(alignment: .firstTextBaseline, spacing: narrow ? 8 : 12) {
-                Text("CODEX").font(Theme.mono(10.5, .medium)).foregroundColor(Theme.ink3).tracking(1.2)
-                Text(c.email ?? c.name).font(Theme.mono(12, .regular)).foregroundColor(Theme.ink2).lineLimit(1).truncationMode(.middle)
-                if let t = c.tier {
+                Text(title.uppercased()).font(Theme.mono(10.5, .medium)).foregroundColor(Theme.ink3).tracking(1.2)
+                Text(c.email ?? (isGemini ? "Antigravity CLI" : c.name)).font(Theme.mono(12, .regular)).foregroundColor(Theme.ink2).lineLimit(1).truncationMode(.middle)
+                if let t = c.tier, t != title {
                     Text(t).font(Theme.mono(11, .regular)).foregroundColor(Theme.ink3)
                         .padding(.horizontal, 7).padding(.vertical, 1)
                         .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.hair, lineWidth: 1))
@@ -54,7 +56,7 @@ struct CodexPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hair, lineWidth: 1))
         .contentShape(RoundedRectangle(cornerRadius: 10))
         .onTapGesture { onOpen(c) }
-        .help("Click for Codex usage over time. Codex counts in the fleet bar.")
+        .help("Click for \(title) usage over time. \(title) counts in the fleet bar.")
     }
 
     private func window(_ label: String, _ w: WindowDTO) -> some View {

@@ -8,6 +8,8 @@ struct UsageSnapshot: Decodable {
     var accounts: [AccountDTO]
     /// Codex (ChatGPT plan) usage, served apart from the Claude accounts (engine: src/codex.mjs).
     var codex: [AccountDTO]? = nil
+    /// Gemini usage through the Antigravity CLI (engine: src/gemini.mjs); same shape, same panel.
+    var gemini: [AccountDTO]? = nil
     /// Every account, Codex included, folded into one capacity-weighted picture (engine: src/fleet.mjs).
     var fleet: FleetDTO?
 }
@@ -96,7 +98,7 @@ struct AccountDTO: Decodable, Identifiable {
     var stale: Bool?
     var status: Int?
     var email: String? = nil
-    /// "codex" for the Codex entry; nil for Claude accounts.
+    /// "codex" or "gemini" for those entries; nil for Claude accounts.
     var provider: String? = nil
 
     var name: String { label ?? id }

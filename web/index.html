@@ -81,6 +81,7 @@
   .fleet-head .spacer { flex: 1; }
   /* Codex: its own panel and bar under the fleet bar (it also counts in the fleet). */
   .codex { cursor: pointer; }
+  .codex > div + div { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair); }
   .codex .cx-who { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .codex .cx-plan { font-family: var(--mono); font-size: 11px; color: var(--ink-3); border: 1px solid var(--hair); border-radius: 5px; padding: 1px 7px; white-space: nowrap; }
   .codex .cx-credits { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
@@ -651,9 +652,11 @@ function rowFor(a){
 const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const fmtClock = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 function inText(iso){ const t = shortDur(iso); return t === 'now' ? 'now' : t ? `in ${t}` : ''; }
-// The fleet counts Claude accounts and Codex (served apart as latest.codex),
+// The fleet counts Claude accounts, Codex and Gemini (served apart as
+// latest.codex and latest.gemini; both use the Codex panel),
 // with the engine's weights so a Codex week weighs what the engine says.
-const codexEntries = () => latest?.codex || [];
+const codexEntries = () => [...(latest?.codex || []), ...(latest?.gemini || [])];
+const providerName = (c) => (c.provider === 'gemini' ? 'Gemini' : 'Codex');
 function fleetFor(accounts){
   return computeFleet([...accounts, ...codexEntries()], { warnPct: latest?.thresholds?.warnPct ?? 70, critPct: latest?.thresholds?.critPct ?? 90, ...(latest?.weights ? { weights: latest.weights } : {}) });
 }
@@ -673,8 +676,8 @@ function renderCodex(){
       return `<div class="cx-win"><span class="k">${k}</span><div class="cx-bar ${cls}"><i style="width:${Math.max(1, Math.min(100, w.pct))}%"></i></div><span class="v"><b>${Math.round(w.pct)}%</b> used${when ? ' &middot; ' + when : ''}</span></div>`;
     }).join('');
     const note = c.stale ? `<div class="cx-note">${esc(c.message || 'cached')}</div>` : (u.limitReached ? `<div class="cx-note">limit reached (${esc(u.limitReached)})</div>` : '');
-    return `<div data-codex="${esc(c.id)}" title="Click for Codex usage over time. Counts in the fleet bar.">
-      <div class="fleet-head"><span class="fleet-title">Codex</span><span class="cx-who">${esc(c.email || c.label)}</span><span class="cx-plan">${esc(c.tier || '')}</span><span class="spacer"></span>${credits}</div>
+    return `<div data-codex="${esc(c.id)}" title="Click for ${providerName(c)} usage over time. Counts in the fleet bar.">
+      <div class="fleet-head"><span class="fleet-title">${providerName(c)}</span><span class="cx-who">${esc(c.email || (c.provider === 'gemini' ? 'Antigravity CLI' : c.label))}</span>${c.tier && c.tier !== providerName(c) ? `<span class="cx-plan">${esc(c.tier)}</span>` : ''}<span class="spacer"></span>${credits}</div>
       ${rows || '<div class="cx-note">no rate-limit windows reported</div>'}${note}
     </div>`;
   }).join('');
@@ -882,7 +885,9 @@ function demoData(){
   }
   const codex = [{ id: 'codex:demo', provider: 'codex', label: 'Codex · you@example.com', email: 'you@example.com', tier: 'Codex Pro',
     usage: { session: win(34, 140), weekly: win(41, 4200), weeklyModels: [], overage: null, credits: { balance: 12840, unlimited: false, hasCredits: true } } }];
-  return { generatedAt: new Date(now).toISOString(), accounts, codex };
+  const gemini = [{ id: 'gemini:default', provider: 'gemini', label: 'Gemini', email: null, tier: 'Gemini',
+    usage: { session: win(12, 190), weekly: win(27, 6100), weeklyModels: [], overage: null, credits: null } }];
+  return { generatedAt: new Date(now).toISOString(), accounts, codex, gemini };
 }
 
 async function load(){

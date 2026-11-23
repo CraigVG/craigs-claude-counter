@@ -378,7 +378,7 @@ export function startUsagePoller({ collect, history, intervalMs = 300_000, initi
   const tick = async () => {
     const snap = await collect();
     const ts = snap.generatedAt || new Date().toISOString();
-    const n = await history.append([...(snap.accounts || []), ...(snap.codex || [])].map((a) => recordFrom(a, ts)));
+    const n = await history.append([...(snap.accounts || []), ...(snap.codex || []), ...(snap.gemini || [])].map((a) => recordFrom(a, ts)));
     if (Date.now() - lastPrune > DAY_MS) { lastPrune = Date.now(); await history.prune().catch(() => {}); }
     return n;
   };

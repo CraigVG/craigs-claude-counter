@@ -101,6 +101,11 @@ export function loadConfig(env = process.env) {
     // much a Codex week counts in the fleet bar (default: Pro = 7, like Max 20x).
     codexEnabled: env.CLAUDE_USAGE_CODEX !== '0',
     codexWeight: env.CLAUDE_USAGE_CODEX_WEIGHT ? Number(env.CLAUDE_USAGE_CODEX_WEIGHT) : null,
+    // Gemini usage through the Antigravity CLI (agy); 0 turns it off. agy does
+    // not report the plan, so the fleet weight is a setting (default 1, the
+    // Google AI Pro class, like Claude Pro).
+    geminiEnabled: env.CLAUDE_USAGE_GEMINI !== '0',
+    geminiWeight: env.CLAUDE_USAGE_GEMINI_WEIGHT ? Number(env.CLAUDE_USAGE_GEMINI_WEIGHT) : null,
     // Circuit breaker: after a 429 from upstream, stop calling it for this
     // account for this long (serving last-known data), doubling on each
     // further 429 up to 15 min, with jitter. Prevents an open tab from
